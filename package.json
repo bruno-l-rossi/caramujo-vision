@@ -1,0 +1,34 @@
+{
+  "name": "caramujo-vision",
+  "productName": "Caramujo Vision",
+  "version": "1.0.0",
+  "description": "Visualizador de áudio do rideblan / Caramujo Records",
+  "author": "rideblan",
+  "license": "UNLICENSED",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac dmg",
+    "test": "node test/smoke.js ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.caramujo.vision",
+    "productName": "Caramujo Vision",
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "build/icon.png"
+    },
+    "files": [
+      "index.html",
+      "css/**",
+      "js/**",
+      "assets/logo.png",
+      "electron/**",
+      "build/icon.png"
+    ]
+  }
+}

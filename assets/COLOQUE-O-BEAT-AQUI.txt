@@ -1,0 +1,5 @@
+Solta aqui o beat da semana exportado (LEGO) com o nome:
+
+  demo-beat.mp3   (ou demo-beat.wav)
+
+O modo demo do app passa a tocar ele automaticamente.

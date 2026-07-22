@@ -1,0 +1,248 @@
+/* Caramujo Vision — interface some, visual aparece (ver DESIGN.md) */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #080809;
+  --panel: #050506;
+  --border: rgba(255, 255, 255, 0.07);
+  --text: #8f8f95;
+  --accent: #f0efe9;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 11px;
+  overflow: hidden;
+}
+
+/* barra superior */
+#topbar {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(9, 9, 14, 0.9);
+  user-select: none;
+}
+#topbar .logoimg { height: 20px; width: 20px; object-fit: contain; }
+#topbar .logo {
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 3px;
+  font-size: 11px;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+#topbar select, #topbar button {
+  background: #0d0d0e;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+#topbar select:hover, #topbar button:hover { border-color: rgba(255, 255, 255, 0.25); color: #e6e6e2; }
+#status { margin-left: auto; letter-spacing: 1px; opacity: 0.7; white-space: nowrap; }
+#status.ok { color: var(--accent); opacity: 1; }
+
+/* grade de módulos */
+#grid {
+  height: calc(100% - 38px);
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: minmax(60px, 1fr);
+  grid-auto-flow: dense;
+  gap: 6px;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.panel {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  min-height: 60px;
+}
+.panel canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.panel.dragging { opacity: 0.4; }
+.panel.recording { border-color: #ff2d55; box-shadow: 0 0 0 1px #ff2d55; }
+
+.pbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: linear-gradient(rgba(7, 7, 11, 0.85), transparent);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+  cursor: grab;
+}
+.panel:hover .pbar { opacity: 1; }
+.ptitle { letter-spacing: 2.5px; font-size: 8px; color: #77777d; }
+.pbtns button {
+  background: none;
+  border: none;
+  color: #9a9ab0;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.pbtns button:hover { color: var(--accent); }
+.panel.recording .pbtns button[data-a="rec"] { color: #ff2d55; }
+
+/* gaveta lateral de ajustes: nunca cobre o visual */
+#drawer {
+  position: fixed;
+  top: 38px; right: 0; bottom: 0;
+  width: 240px;
+  background: #0a0a0b;
+  border-left: 1px solid var(--border);
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+body.drawer-open #drawer { transform: none; }
+#grid { transition: margin-right 0.18s ease; }
+body.drawer-open #grid { margin-right: 240px; }
+.dhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 2px;
+  font-size: 9px;
+  color: #b9b9b4;
+}
+.dhead button {
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.dhead button:hover { color: var(--accent); }
+#drawerbody { padding: 12px; overflow-y: auto; }
+.cfgrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cfgrow label { width: 88px; font-size: 9px; letter-spacing: 0.5px; }
+.cfgrow input[type="range"] { flex: 1; accent-color: var(--accent); }
+.cfgrow select, .cfgrow button.reset, .cfgrow input[type="text"] {
+  flex: 1;
+  background: #0d0d0e;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font: inherit;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+.cfgrow input[type="text"] { cursor: text; color: #e6e6e2; }
+
+/* textura global */
+#texture-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  mix-blend-mode: overlay;
+}
+
+/* splash de início (navegador exige clique pra liberar áudio) */
+#splash {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  cursor: pointer;
+}
+#splash.hidden { display: none; }
+#splash .splashlogo { width: 110px; height: 110px; }
+#splash .big {
+  color: var(--accent);
+  font-size: 26px;
+  letter-spacing: 8px;
+  font-weight: 700;
+}
+#splash .sub { letter-spacing: 2px; }
+#splash .hint { opacity: 0.5; font-size: 10px; }
+
+/* modal de ajuda */
+#modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#modal.hidden { display: none; }
+#modal .box {
+  width: min(560px, 92vw);
+  max-height: 84vh;
+  overflow-y: auto;
+  background: #0d0d14;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  line-height: 1.7;
+  font-size: 12px;
+  color: #c5c5d5;
+}
+#modal h2 { color: var(--accent); font-size: 13px; letter-spacing: 2px; margin-bottom: 12px; }
+#modal h3 { color: #e8e8f2; font-size: 11px; letter-spacing: 1px; margin: 14px 0 4px; }
+#modal a { color: var(--accent); }
+#modal ol { margin: 4px 0 4px 18px; }
+#modal .close-row { text-align: right; margin-top: 14px; }
+#modalclose {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* soltar arquivo */
+body.dropping::after {
+  content: "SOLTA A FAIXA AQUI";
+  position: fixed;
+  inset: 10px;
+  border: 2px dashed var(--accent);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  letter-spacing: 4px;
+  font-size: 16px;
+  background: rgba(7, 7, 11, 0.8);
+  z-index: 80;
+  pointer-events: none;
+}
+
+/* rolagem discreta */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: #22222e; border-radius: 4px; }

@@ -1,0 +1,4 @@
+node_modules/
+dist/
+assets/demo-beat.*
+.DS_Store

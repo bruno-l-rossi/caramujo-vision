@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caramujo Vision</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="topbar">
+  <img src="assets/logo.png" class="logoimg" alt="">
+  <span class="logo">CARAMUJO VISION</span>
+  <button id="play" title="Play/pause da fonte atual">▶</button>
+  <select id="source" title="Fonte de áudio"></select>
+  <select id="theme" title="Tema global"></select>
+  <select id="texture" title="Textura"></select>
+  <select id="addmod" title="Adicionar módulo">
+    <option value="">+ MÓDULO</option>
+  </select>
+  <button id="fullapp" title="App em tela cheia">⛶</button>
+  <button id="help" title="Como captar o som do computador">?</button>
+  <button id="reset" title="Restaurar layout padrão">↺</button>
+  <span id="status">PARADO</span>
+</div>
+
+<div id="grid"></div>
+
+<div id="drawer">
+  <div class="dhead">
+    <span id="drawertitle">AJUSTES</span>
+    <button id="drawerclose" title="Fechar ajustes">✕</button>
+  </div>
+  <div id="drawerbody"></div>
+</div>
+
+<input type="file" id="filepick" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg" style="display:none">
+
+<canvas id="texture-overlay"></canvas>
+
+<div id="splash">
+  <img src="assets/logo.png" class="splashlogo" alt="">
+  <div class="big">CARAMUJO VISION</div>
+  <div class="sub">VISUAIS QUE OUVEM O QUE VOCÊ TOCA</div>
+  <div class="hint">clique pra começar · na primeira vez, escolha o arquivo do beat (fica salvo)</div>
+</div>
+
+<div id="modal" class="hidden">
+  <div class="box">
+    <h2>ÁUDIO: DEMO E CAPTURA</h2>
+
+    <h3>0. Beat da semana</h3>
+    <p>Na primeira vez, o app pede o arquivo do beat (escolhe o wav/mp3 exportado do FL) e <b>guarda dentro do navegador</b>: das próximas vezes toca direto, sem pedir de novo. Pra trocar o beat da semana, use <b>UPLOAD DE FAIXA…</b> ou apague os dados do site. Abrindo pelo link https, ele também tenta <b>assets/demo-beat.wav</b> da pasta sozinho.</p>
+    <p>O navegador não escuta o que sai das caixas sozinho. No Mac, a ponte é um driver gratuito chamado <b>BlackHole</b>. Instala uma vez, funciona pra sempre: FL Studio, YouTube, Spotify, tudo.</p>
+
+    <h3>1. Instalar o BlackHole (uma vez só)</h3>
+    <ol>
+      <li>Baixe em <a href="https://existential.audio/blackhole/" target="_blank">existential.audio/blackhole</a> (versão 2ch).</li>
+      <li>Abra o instalador e siga o padrão (vai pedir sua senha do Mac).</li>
+    </ol>
+
+    <h3>2. Criar a saída combinada (uma vez só)</h3>
+    <ol>
+      <li>Abra o app <b>Configuração de Áudio MIDI</b> (busca no Spotlight: ⌘+espaço).</li>
+      <li>Clique no <b>+</b> no canto inferior esquerdo → <b>Criar dispositivo de múltiplas saídas</b>.</li>
+      <li>Marque <b>BlackHole 2ch</b> e a sua saída de som (fones ou caixas).</li>
+      <li>Clique com o botão direito nesse dispositivo novo → <b>Usar este dispositivo para saída de som</b>.</li>
+    </ol>
+    <p>Pronto: você continua ouvindo normal, e o BlackHole recebe uma cópia do som.</p>
+
+    <h3>3. No FL Studio</h3>
+    <p>Se o FL usa driver próprio de áudio, em <b>Options → Audio Settings</b> escolha o dispositivo de múltiplas saídas como saída. Apps comuns (YouTube, player) já seguem a saída do sistema, sem ajuste.</p>
+
+    <h3>4. Aqui no app</h3>
+    <ol>
+      <li>Na barra de cima, escolha <b>ÁUDIO DO COMPUTADOR…</b></li>
+      <li>Permita o acesso ao microfone quando o navegador pedir.</li>
+      <li>O app acha o BlackHole sozinho e começa a ouvir.</li>
+    </ol>
+
+    <p style="opacity:0.6">Dica: dá pra pular tudo isso arrastando um mp3/wav direto pra tela. A faixa toca e os visuais reagem, bom pra gravar vídeo de faixa pronta.</p>
+
+    <div class="close-row"><button id="modalclose">FECHOU</button></div>
+  </div>
+</div>
+
+<script src="js/audio.js"></script>
+<script src="js/modules.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
