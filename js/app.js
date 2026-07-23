@@ -5,28 +5,45 @@
   var CV = window.CV;
   var engine = window.engine = new AudioEngine();
 
-  var THEMES = [['mono', 'EXO'], ['psy', 'PSY'], ['neon', 'NEON'], ['vhs', 'VHS']];
-  var TEXTURES = [['off', 'SEM TEXTURA'], ['grain', 'GRÃO'], ['vhs', 'VHS']];
+  var THEMES = [
+    ['mono', 'EXO'], ['psy', 'PSY'], ['neon', 'NEON'], ['vhs', 'VHS'],
+    ['poente', 'POENTE'], ['gelo', 'GELO'], ['oceano', 'OCEANO'], ['floresta', 'FLORESTA'],
+    ['vapor', 'VAPORWAVE'], ['rubi', 'RUBI'], ['ambar', 'ÂMBAR']
+  ];
+  var LAYOUTS = [['grid', 'GRADE'], ['row', 'LINHA →'], ['col', 'COLUNA ↓']];
 
+  // grade fina (240 col / 240 linhas de referência): passos pequenos = redimensionar liso.
+  // valores = 12 colunas antigas × 20, então a aparência é idêntica, só com muito mais precisão.
+  var GRID_RES = 240, GW_MAX = 240, GH_MAX = 200;
   var DEFAULT_LAYOUT = [
-    { mod: 'wavescroll', w: 3, h: 2 }, { mod: 'loudness', w: 1, h: 2 },
-    { mod: 'gonio', w: 2, h: 2 }, { mod: 'scope', w: 2, h: 2 }, { mod: 'spectrum', w: 4, h: 2 },
-    { mod: 'psy', w: 4, h: 4 }, { mod: 'flow', w: 4, h: 4 }, { mod: 'ferro', w: 4, h: 4 },
-    { mod: 'trace', w: 8, h: 2 }, { mod: 'ascii', w: 4, h: 2 },
-    { mod: 'wavelayers', w: 8, h: 3 }, { mod: 'lissa', w: 4, h: 3 }
+    { mod: 'spectrum', w: 80, h: 40 }, { mod: 'wavescroll', w: 80, h: 40 },
+    { mod: 'loudness', w: 20, h: 40 }, { mod: 'gonio', w: 60, h: 40 },
+    { mod: 'scope', w: 80, h: 40 }, { mod: 'spectrogram', w: 80, h: 40 },
+    { mod: 'psy', w: 80, h: 80 }, { mod: 'flow', w: 80, h: 80 }, { mod: 'terreno', w: 80, h: 80 },
+    { mod: 'aurora', w: 80, h: 80 }, { mod: 'enxame', w: 80, h: 80 }, { mod: 'harmonografo', w: 80, h: 80 },
+    { mod: 'orbita', w: 80, h: 80 }, { mod: 'mare', w: 80, h: 80 }, { mod: 'tunnel', w: 80, h: 80 },
+    { mod: 'trace', w: 160, h: 40 }, { mod: 'ascii', w: 80, h: 40 },
+    { mod: 'wavelayers', w: 160, h: 60 }, { mod: 'lissa', w: 80, h: 60 }, { mod: 'silk', w: 80, h: 60 }
   ];
 
-  var state = load() || { theme: 'mono', texture: 'off', panels: null };
+  var state = load() || { theme: 'mono', texture: 'off', layout: 'grid', panels: null };
+  if (!state.layout) state.layout = 'grid';
+  // migração pra grade fina: multiplica o tamanho antigo (12 col) por 20. Fica idêntico, só mais preciso.
+  if (state.panels && !state.res) {
+    var f = GRID_RES / 12;
+    state.panels.forEach(function (p) { p.w = Math.round((p.w || 3) * f); p.h = Math.round((p.h || 2) * f); });
+  }
+  state.res = GRID_RES;
   CV.theme = state.theme;
   var panels = [];
   var uid = 0;
 
   function load() {
-    try { return JSON.parse(localStorage.getItem('cv-state-v3')); } catch (e) { return null; }
+    try { return JSON.parse(localStorage.getItem('cv-state-v4')); } catch (e) { return null; }
   }
   function save() {
     state.panels = panels.map(function (p) { return { mod: p.modId, w: p.gw, h: p.gh, s: p.s }; });
-    try { localStorage.setItem('cv-state-v3', JSON.stringify(state)); } catch (e) {}
+    try { localStorage.setItem('cv-state-v4', JSON.stringify(state)); } catch (e) {}
   }
 
   /* ---------- painéis ---------- */
@@ -37,7 +54,7 @@
     if (!def) return null;
     var p = {
       id: 'p' + (uid++), modId: cfg.mod, def: def,
-      gw: cfg.w || 3, gh: cfg.h || 2,
+      gw: cfg.w || 60, gh: cfg.h || 40,
       s: Object.assign({}, def.defaults, cfg.s || {}),
       st: {}, w: 0, h: 0, dpr: 1
     };
@@ -49,15 +66,13 @@
       '<div class="pbar">' +
       '<span class="ptitle">' + def.name.toUpperCase() + '</span>' +
       '<span class="pbtns">' +
-      '<button data-a="cfg" title="Ajustes">⚙</button>' +
-      '<button data-a="wminus" title="Mais estreito">‹</button>' +
-      '<button data-a="wplus" title="Mais largo">›</button>' +
-      '<button data-a="hminus" title="Mais baixo">˄</button>' +
-      '<button data-a="hplus" title="Mais alto">˅</button>' +
+      '<button data-a="cfg" class="cfg" title="Ajustes deste módulo">⚙</button>' +
       '<button data-a="rec" title="Gravar vídeo deste painel">●</button>' +
-      '<button data-a="full" title="Tela cheia">⛶</button>' +
       '<button data-a="close" title="Fechar">✕</button>' +
-      '</span></div>';
+      '</span></div>' +
+      '<div class="rz rz-r" data-rz="w" title="Arraste pra mudar a largura">‹›</div>' +
+      '<div class="rz rz-b" data-rz="h" title="Arraste pra mudar a altura">˄˅</div>' +
+      '<div class="rz rz-c" data-rz="wh" title="Arraste pra redimensionar">⤡</div>';
     p.el = el;
     p.canvas = el.querySelector('canvas');
     applySpan(p);
@@ -84,26 +99,75 @@
       var a = ev.target.getAttribute && ev.target.getAttribute('data-a');
       if (!a) return;
       if (a === 'close') { removePanel(p); }
-      if (a === 'wplus') { p.gw = Math.min(12, p.gw + 1); applySpan(p); save(); }
-      if (a === 'wminus') { p.gw = Math.max(1, p.gw - 1); applySpan(p); save(); }
-      if (a === 'hplus') { p.gh = Math.min(8, p.gh + 1); applySpan(p); save(); }
-      if (a === 'hminus') { p.gh = Math.max(1, p.gh - 1); applySpan(p); save(); }
-      if (a === 'full') { el.requestFullscreen && el.requestFullscreen(); }
       if (a === 'cfg') { toggleCfg(p); }
       if (a === 'rec') { toggleRec(p, ev.target); }
     });
 
-    // arrastar pela barra do título (o painel em si fica livre pros sliders e mouse)
-    var bar = el.querySelector('.pbar');
-    bar.setAttribute('draggable', 'true');
-    bar.addEventListener('dragstart', function (ev) { ev.dataTransfer.setData('text/plain', p.id); el.classList.add('dragging'); });
-    bar.addEventListener('dragend', function () { el.classList.remove('dragging'); });
-    el.addEventListener('dragover', function (ev) { ev.preventDefault(); });
+    // redimensionar arrastando as bordas. Na grade: direita=largura, baixo=altura, canto=os dois.
+    // Na linha: só largura. Na coluna: só altura (o peso do painel na fila).
+    el.querySelectorAll('.rz').forEach(function (hz) {
+      hz.addEventListener('mousedown', function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        var mode = hz.getAttribute('data-rz'), layout = state.layout;
+        var r = el.getBoundingClientRect();
+        var colUnit = r.width / Math.max(1, p.gw), rowUnit = r.height / Math.max(1, p.gh);
+        var sx = ev.clientX, sy = ev.clientY, gw0 = p.gw, gh0 = p.gh;
+        el.setAttribute('draggable', 'false'); // segurar a borda redimensiona, não reordena
+        document.body.classList.add('resizing'); el.classList.add('rzing');
+        function mv(e) {
+          if (layout === 'row') {
+            if (mode.indexOf('w') < 0) return;
+            p.gw = Math.max(1, Math.min(GW_MAX, gw0 + Math.round((e.clientX - sx) / colUnit)));
+            el.style.flexGrow = p.gw;
+          } else if (layout === 'col') {
+            if (mode.indexOf('h') < 0) return;
+            p.gh = Math.max(1, Math.min(GH_MAX, gh0 + Math.round((e.clientY - sy) / rowUnit)));
+            el.style.flexGrow = p.gh;
+          } else {
+            if (mode.indexOf('w') >= 0) p.gw = Math.max(1, Math.min(GW_MAX, gw0 + Math.round((e.clientX - sx) / colUnit)));
+            if (mode.indexOf('h') >= 0) p.gh = Math.max(1, Math.min(GH_MAX, gh0 + Math.round((e.clientY - sy) / rowUnit)));
+            applySpan(p);
+          }
+        }
+        function up() {
+          window.removeEventListener('mousemove', mv);
+          window.removeEventListener('mouseup', up);
+          document.body.classList.remove('resizing'); el.classList.remove('rzing');
+          el.setAttribute('draggable', 'true');
+          save();
+        }
+        window.addEventListener('mousemove', mv);
+        window.addEventListener('mouseup', up);
+      });
+    });
+
+    // trocar de lugar: arrasta o módulo por QUALQUER ponto dele; uma linha mostra onde ele entra
+    el.setAttribute('draggable', 'true');
+    el.addEventListener('dragstart', function (ev) {
+      ev.dataTransfer.setData('text/plain', p.id);
+      ev.dataTransfer.effectAllowed = 'move';
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', function () { el.classList.remove('dragging'); clearDropMarks(); });
+    el.addEventListener('dragover', function (ev) {
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      if (el.classList.contains('dragging')) return;
+      var r = el.getBoundingClientRect();
+      var after = (state.layout === 'col') ? (ev.clientY - r.top) > r.height / 2 : (ev.clientX - r.left) > r.width / 2;
+      clearDropMarks();
+      el.classList.add(after ? 'ins-after' : 'ins-before');
+    });
+    el.addEventListener('dragleave', function () { el.classList.remove('ins-before', 'ins-after'); });
     el.addEventListener('drop', function (ev) {
       ev.preventDefault();
+      var after = el.classList.contains('ins-after');
+      clearDropMarks();
       var srcId = ev.dataTransfer.getData('text/plain');
       var src = document.getElementById(srcId);
-      if (src && src !== el) { grid.insertBefore(src, el); syncOrder(); save(); }
+      if (!src || src === el) return;
+      grid.insertBefore(src, after ? el.nextSibling : el);
+      syncOrder(); save();
     });
 
     panels.push(p);
@@ -138,6 +202,11 @@
     });
     panels = ordered;
   }
+  function clearDropMarks() {
+    grid.querySelectorAll('.panel.ins-before, .panel.ins-after').forEach(function (n) {
+      n.classList.remove('ins-before', 'ins-after');
+    });
+  }
 
   /* ---------- ajustes na gaveta lateral (não cobre o visual) ---------- */
   var drawerPanel = null;
@@ -157,11 +226,21 @@
     var box = drawerBody;
     box.innerHTML = '';
     var rows = [];
-    rows.push('<div class="cfgrow"><label>Cor</label><select data-k="colorMode">' +
-      '<option value="theme"' + (p.s.colorMode === 'theme' ? ' selected' : '') + '>Tema global</option>' +
-      '<option value="custom"' + (p.s.colorMode === 'custom' ? ' selected' : '') + '>Própria</option>' +
-      '</select></div>');
-    rows.push('<div class="cfgrow"><label>Matiz</label><input type="range" data-k="hue" min="0" max="360" step="1" value="' + p.s.hue + '"></div>');
+    // cor e tema genéricos só pra quem usa o tema; módulos com cor própria (espectro, onda) escondem
+    if (p.def.tint !== false) {
+      // tema individual: dá pra mesclar temas diferentes em cada módulo
+      var curTheme = p.s.theme || 'global';
+      var topts = '<option value="global"' + (curTheme === 'global' ? ' selected' : '') + '>Segue o global</option>';
+      THEMES.forEach(function (th) {
+        topts += '<option value="' + th[0] + '"' + (curTheme === th[0] ? ' selected' : '') + '>' + th[1] + '</option>';
+      });
+      rows.push('<div class="cfgrow"><label>Tema</label><select data-k="theme">' + topts + '</select></div>');
+      rows.push('<div class="cfgrow"><label>Cor</label><select data-k="colorMode">' +
+        '<option value="theme"' + (p.s.colorMode === 'theme' ? ' selected' : '') + '>Do tema</option>' +
+        '<option value="custom"' + (p.s.colorMode === 'custom' ? ' selected' : '') + '>Própria</option>' +
+        '</select></div>');
+      rows.push('<div class="cfgrow"><label>Matiz</label><input type="range" data-k="hue" min="0" max="360" step="1" value="' + p.s.hue + '"></div>');
+    }
     (p.def.schema || []).forEach(function (f) {
       if (f.type === 'text') {
         rows.push('<div class="cfgrow"><label>' + f.label + '</label>' +
@@ -217,10 +296,14 @@
   /* ---------- barra superior ---------- */
   var elSource = document.getElementById('source');
   var elTheme = document.getElementById('theme');
-  var elTexture = document.getElementById('texture');
   var elAdd = document.getElementById('addmod');
-  var elHelp = document.getElementById('help');
+  var elLayout = document.getElementById('layout');
+  var elTpl = document.getElementById('tpl');
+  var elTplSave = document.getElementById('tplsave');
+  var elTplDel = document.getElementById('tpldel');
   var elStatus = document.getElementById('status');
+
+  state.texture = 'off'; // textura removida da UI: sempre sem textura
 
   THEMES.forEach(function (t) {
     var o = document.createElement('option'); o.value = t[0]; o.textContent = t[1];
@@ -229,12 +312,161 @@
   });
   elTheme.addEventListener('change', function () { state.theme = CV.theme = elTheme.value; save(); });
 
-  TEXTURES.forEach(function (t) {
+  /* ---------- layout: grade / linha / coluna (resize proporcional é automático) ---------- */
+  LAYOUTS.forEach(function (t) {
     var o = document.createElement('option'); o.value = t[0]; o.textContent = t[1];
-    if (t[0] === state.texture) o.selected = true;
-    elTexture.appendChild(o);
+    if (t[0] === state.layout) o.selected = true;
+    elLayout.appendChild(o);
   });
-  elTexture.addEventListener('change', function () { state.texture = elTexture.value; save(); });
+  function applyLayout(mode) {
+    document.body.classList.remove('layout-row', 'layout-col');
+    if (mode === 'row') document.body.classList.add('layout-row');
+    else if (mode === 'col') document.body.classList.add('layout-col');
+    // peso de cada painel na fila = seu tamanho de grade (dá pra reajustar arrastando)
+    panels.forEach(function (p) {
+      if (mode === 'row') p.el.style.flexGrow = p.gw;
+      else if (mode === 'col') p.el.style.flexGrow = p.gh;
+      else p.el.style.flexGrow = '';
+    });
+    // os canvases se ajustam via ResizeObserver; força um recálculo depois da troca
+    setTimeout(function () { panels.forEach(resizePanel); }, 60);
+  }
+  elLayout.addEventListener('change', function () {
+    state.layout = elLayout.value; applyLayout(state.layout); save();
+  });
+
+  /* ---------- reconstrói os painéis (início, reset e templates) ---------- */
+  function rebuildPanels(list) {
+    if (drawerPanel) closeDrawer();
+    panels.slice().forEach(function (p) { if (p.rec) stopRec(p); p.el.remove(); });
+    panels = [];
+    // array (mesmo vazio) manda; só cai no padrão quando não veio lista nenhuma
+    var arr = Array.isArray(list) ? list : DEFAULT_LAYOUT;
+    arr.forEach(function (cfg) {
+      createPanel({ mod: cfg.mod, w: cfg.w, h: cfg.h, s: cfg.s });
+    });
+  }
+
+  /* ---------- templates: guarda a personalização inteira com um nome ----------
+     Salva visuais, ajustes de cada um, tema, textura, layout e o tamanho da janela.
+     Carregar volta tudo num clique. Ficam separados do estado de trabalho. */
+  function loadTemplates() {
+    try { return JSON.parse(localStorage.getItem('cv-templates-v1')) || {}; } catch (e) { return {}; }
+  }
+  function storeTemplates(o) {
+    try { localStorage.setItem('cv-templates-v1', JSON.stringify(o)); } catch (e) {}
+  }
+  function refreshTplSelect(sel) {
+    var all = loadTemplates();
+    var names = Object.keys(all).sort();
+    elTpl.innerHTML = '';
+    var head = document.createElement('option');
+    head.value = ''; head.textContent = names.length ? 'TEMPLATES…' : 'SEM TEMPLATE';
+    elTpl.appendChild(head);
+    names.forEach(function (nm) {
+      var o = document.createElement('option'); o.value = nm; o.textContent = nm.toUpperCase();
+      elTpl.appendChild(o);
+    });
+    elTpl.value = (sel && all[sel]) ? sel : '';
+  }
+  function snapshotState() {
+    return {
+      theme: state.theme, texture: state.texture, layout: state.layout,
+      panels: panels.map(function (p) { return { mod: p.modId, w: p.gw, h: p.gh, s: p.s }; })
+    };
+  }
+  function saveTemplate(name) {
+    var snap = snapshotState();
+    var finish = function () {
+      var all = loadTemplates(); all[name] = snap; storeTemplates(all);
+      refreshTplSelect(name);
+      setStatus('TEMPLATE SALVO: ' + name.toUpperCase(), true);
+    };
+    if (window.caramujo && window.caramujo.winGetBounds) {
+      Promise.resolve(window.caramujo.winGetBounds()).then(function (b) { snap.win = b; finish(); }).catch(finish);
+    } else { finish(); }
+  }
+  function applyTemplate(name) {
+    var all = loadTemplates(); var tpl = all[name]; if (!tpl) return;
+    state.theme = CV.theme = tpl.theme || 'mono';
+    state.texture = 'off';
+    state.layout = tpl.layout || 'grid';
+    elTheme.value = state.theme; elLayout.value = state.layout;
+    applyLayout(state.layout);
+    rebuildPanels(tpl.panels);
+    save();
+    if (tpl.win && window.caramujo && window.caramujo.winSetBounds) window.caramujo.winSetBounds(tpl.win);
+    setStatus('TEMPLATE: ' + name.toUpperCase(), true);
+  }
+  elTpl.addEventListener('change', function () { if (elTpl.value) applyTemplate(elTpl.value); });
+  elTplSave.addEventListener('click', function () {
+    var name = (window.prompt('Nome do template:', '') || '').trim();
+    if (!name) return;
+    var all = loadTemplates();
+    if (all[name] && !window.confirm('Já existe "' + name + '". Sobrescrever?')) return;
+    saveTemplate(name);
+  });
+  elTplDel.addEventListener('click', function () {
+    var name = elTpl.value;
+    if (!name) { setStatus('ESCOLHE UM TEMPLATE PRA APAGAR', false); return; }
+    if (!window.confirm('Apagar o template "' + name + '"?')) return;
+    var all = loadTemplates(); delete all[name]; storeTemplates(all);
+    refreshTplSelect('');
+    setStatus('TEMPLATE APAGADO', false);
+  });
+  // templates prontos: "padrão" + variações de paleta (paletas comuns + espírito MiniMeters).
+  // Semeado uma vez só (marcador de versão): não sobrescreve os seus nem ressuscita os apagados.
+  function baseLayout(over) {
+    return DEFAULT_LAYOUT.map(function (cfg) {
+      var s = over ? over(cfg.mod) : null;
+      return s ? { mod: cfg.mod, w: cfg.w, h: cfg.h, s: s } : { mod: cfg.mod, w: cfg.w, h: cfg.h };
+    });
+  }
+  function seedTemplates() {
+    var SEED = 'v5';
+    if (localStorage.getItem('cv-tpl-seed') === SEED) return;
+    var all = loadTemplates();
+    // as paletas viraram só temas: remove os templates de paleta antigos (seus próprios ficam intactos)
+    ['neon', 'rua (vhs)', 'poente', 'gelo', 'vaporwave', 'floresta', 'âmbar'].forEach(function (nm) { delete all[nm]; });
+    all['padrão'] = { theme: 'mono', texture: 'off', layout: 'grid', win: null, panels: baseLayout(null) };
+    all['vazio'] = { theme: 'mono', texture: 'off', layout: 'grid', win: null, panels: [] };
+    storeTemplates(all);
+    try { localStorage.setItem('cv-tpl-seed', SEED); } catch (e) {}
+  }
+  seedTemplates();
+  refreshTplSelect('');
+
+  /* ---------- modo visual: o menu só aparece com o mouse no topo ---------- */
+  var topbar = document.getElementById('topbar');
+  var chromePinned = false, topbarHover = false;
+  function showChrome() { document.body.classList.add('chrome'); }
+  function hideChrome() { if (!chromePinned && !topbarHover) document.body.classList.remove('chrome'); }
+  topbar.addEventListener('mouseenter', function () { topbarHover = true; showChrome(); });
+  topbar.addEventListener('mouseleave', function () { topbarHover = false; hideChrome(); });
+  topbar.addEventListener('focusin', function () { chromePinned = true; showChrome(); });
+  topbar.addEventListener('focusout', function () { chromePinned = false; setTimeout(hideChrome, 120); });
+  // o menu só abre no topo EXTREMO da tela (≤4px), pra não cobrir os botões (⚙/✕) dos módulos da fileira de cima
+  window.addEventListener('mousemove', function (e) {
+    if (e.clientY <= 4) showChrome();
+    else if (e.clientY > 44 && !topbarHover && !chromePinned) hideChrome();
+  });
+  window.addEventListener('keydown', function (e) {
+    var tag = (e.target && e.target.tagName) || '';
+    if ((e.key === 'h' || e.key === 'H') && !/INPUT|TEXTAREA|SELECT/.test(tag)) {
+      chromePinned = !chromePinned;
+      chromePinned ? showChrome() : hideChrome();
+    }
+  });
+
+  /* ---------- botões de janela (só no app de computador) ---------- */
+  var elWinCtl = document.getElementById('winctl');
+  var elAppQuit = document.getElementById('appquit');
+  if (window.caramujo && window.caramujo.winClose) {
+    document.getElementById('winmin').addEventListener('click', function () { window.caramujo.winMinimize(); });
+    if (elAppQuit) elAppQuit.addEventListener('click', function () { window.caramujo.winClose(); });
+  } else if (elWinCtl) {
+    elWinCtl.style.display = 'none';
+  }
 
   Object.keys(CV.registry).forEach(function (id) {
     var o = document.createElement('option');
@@ -244,7 +476,7 @@
   });
   elAdd.addEventListener('change', function () {
     if (!elAdd.value) return;
-    createPanel({ mod: elAdd.value, w: 3, h: 3 });
+    createPanel({ mod: elAdd.value, w: 60, h: 60 });
     elAdd.value = '';
     save();
   });
@@ -254,12 +486,11 @@
     elStatus.className = ok ? 'ok' : '';
   }
 
+  // fonte única: o áudio do computador. Devices de entrada aparecem como alternativa.
   function populateSources(inputs) {
     elSource.innerHTML = '';
-    [['beat', 'LEGO · BEAT DA SEMANA'], ['upload', 'UPLOAD DE FAIXA…'], ['ask', 'ÁUDIO DO COMPUTADOR…'], ['synth', 'BEAT DEMO (SINTÉTICO)']].forEach(function (opt) {
-      var o = document.createElement('option'); o.value = opt[0]; o.textContent = opt[1];
-      elSource.appendChild(o);
-    });
+    var o0 = document.createElement('option'); o0.value = 'ask'; o0.textContent = 'ÁUDIO DO COMPUTADOR';
+    elSource.appendChild(o0);
     (inputs || []).forEach(function (d) {
       var o = document.createElement('option');
       o.value = d.deviceId;
@@ -269,108 +500,18 @@
   }
   populateSources([]);
 
-  /* ---------- guarda o beat da semana dentro do navegador (IndexedDB) ---------- */
-  function idb() {
-    return new Promise(function (res, rej) {
-      var r = indexedDB.open('cv-store', 1);
-      r.onupgradeneeded = function () { r.result.createObjectStore('files'); };
-      r.onsuccess = function () { res(r.result); };
-      r.onerror = function () { rej(r.error); };
-    });
-  }
-  function saveBeat(f) {
-    idb().then(function (db) {
-      db.transaction('files', 'readwrite').objectStore('files').put(f, 'beat');
-    }).catch(function () {});
-  }
-  function loadBeat() {
-    return idb().then(function (db) {
-      return new Promise(function (res) {
-        var rq = db.transaction('files').objectStore('files').get('beat');
-        rq.onsuccess = function () { res(rq.result || null); };
-        rq.onerror = function () { res(null); };
-      });
-    }).catch(function () { return null; });
-  }
-
-  var filePick = document.getElementById('filepick');
-  function pickFile(cb) {
-    filePick.value = '';
-    filePick.onchange = function () { cb(filePick.files[0] || null); };
-    filePick.click();
-  }
-
-  function playBeatFile(file) {
-    engine.playFile(file).then(function () {
-      engine.sourceLabel = 'LEGO · BEAT DA SEMANA';
-      setStatus(engine.sourceLabel, true);
-      syncPlayBtn();
-    }).catch(function () { setStatus('ERRO AO TOCAR O BEAT', false); });
-  }
-
-  /* Beat da semana: 1º do navegador (salvo), 2º da pasta assets (só funciona
-     com endereço https), 3º pede o arquivo uma vez e guarda. */
-  function beatFlow() {
-    loadBeat().then(function (f) {
-      if (f) { playBeatFile(f); return; }
-      if (location.protocol !== 'file:') {
-        engine.startDemo().then(function (kind) {
-          if (kind === 'blocked') setStatus('LEGO CARREGADO · CLICA NO ▶', true);
-          else if (kind === 'synth') setStatus('DEMO SINTÉTICO · SEM O LEGO EM assets/', false);
-          else setStatus(engine.sourceLabel, true);
-          syncPlayBtn();
-        });
-        return;
-      }
-      // aberto por arquivo: o navegador silencia áudio da pasta; pede o arquivo 1x e salva
-      pickFile(function (file) {
-        if (!file) {
-          engine.startSynth();
-          setStatus('DEMO SINTÉTICO · ESCOLHE O BEAT EM FONTE', false);
-          syncPlayBtn();
-          return;
-        }
-        saveBeat(file);
-        playBeatFile(file);
-      });
-    });
-  }
-
   function pickLoopback(inputs) {
     return inputs.find(function (d) { return /blackhole|loopback|soundflower|virtual/i.test(d.label); });
   }
 
+  // áudio do computador é ao vivo: não existe play/pause, então o botão some
   var elPlay = document.getElementById('play');
-  function syncPlayBtn() {
-    elPlay.textContent = engine.isPlaying() ? '❚❚' : '▶';
-    elPlay.style.opacity = engine.canPause() ? 1 : 0.35;
-  }
-  elPlay.addEventListener('click', function () {
-    if (!engine.canPause()) return;
-    engine.togglePlay();
-    syncPlayBtn();
-  });
+  if (elPlay) elPlay.style.display = 'none';
 
-  elSource.addEventListener('change', function () {
-    var v = elSource.value;
-    if (v === 'beat') { beatFlow(); return; }
-    if (v === 'synth') {
-      engine.startSynth();
-      setStatus(engine.sourceLabel, true);
-      syncPlayBtn();
-      return;
-    }
-    if (v === 'upload') {
-      pickFile(function (file) {
-        if (!file) { setStatus('UPLOAD CANCELADO', false); return; }
-        engine.playFile(file).then(function () {
-          setStatus('TOCANDO: ' + file.name.toUpperCase(), true);
-          syncPlayBtn();
-        }).catch(function () { setStatus('ERRO AO TOCAR ARQUIVO', false); });
-      });
-      return;
-    }
-    if (v === 'ask') {
+  /* Liga a fonte: no app, loopback nativo do sistema (sem driver, sem mic).
+     Se falhar (macOS antigo/permissão), cai pro BlackHole por device. */
+  function startComputerAudio() {
+    var goBlackhole = function () {
       engine.startInput(undefined).then(function () {
         return engine.listInputs();
       }).then(function (inputs) {
@@ -380,57 +521,43 @@
           return engine.startInput(lb.deviceId).then(function () {
             elSource.value = lb.deviceId;
             setStatus('OUVINDO: ' + lb.label.toUpperCase(), true);
-            syncPlayBtn();
           });
         }
         setStatus('SEM DRIVER DE LOOPBACK', false);
         showHelp();
-        syncPlayBtn();
-      }).catch(function (e) {
+      }).catch(function () {
         setStatus('PERMISSÃO NEGADA', false);
         showHelp();
       });
-      return;
+    };
+    if (window.caramujo && window.caramujo.enableLoopback) {
+      setStatus('CONECTANDO…', false);
+      engine.startSystemLoopback().then(function () {
+        setStatus('', true);
+      }).catch(goBlackhole);
+    } else {
+      goBlackhole();
     }
+  }
+
+  elSource.addEventListener('change', function () {
+    var v = elSource.value;
+    if (v === 'ask') { startComputerAudio(); return; }
     engine.startInput(v).then(function () {
       var opt = elSource.options[elSource.selectedIndex];
       setStatus('OUVINDO: ' + opt.textContent, true);
-      syncPlayBtn();
     }).catch(function () { setStatus('ERRO NA ENTRADA', false); });
   });
 
   document.getElementById('fullapp').addEventListener('click', function () {
-    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
-  });
-  document.getElementById('reset').addEventListener('click', function () {
-    if (!confirm('Restaurar o layout padrão? Seus ajustes serão apagados.')) return;
-    localStorage.removeItem('cv-state-v3');
-    location.reload();
+    if (window.caramujo && window.caramujo.winFullscreen) window.caramujo.winFullscreen();
+    else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
   });
 
-  /* ---------- ajuda (como captar o som do computador) ---------- */
+  /* ---------- ajuda: abre sozinho se a captura falhar (não tem mais botão) ---------- */
   var modal = document.getElementById('modal');
-  elHelp.addEventListener('click', showHelp);
   document.getElementById('modalclose').addEventListener('click', function () { modal.classList.add('hidden'); });
   function showHelp() { modal.classList.remove('hidden'); }
-
-  /* ---------- arrastar arquivo de áudio ---------- */
-  window.addEventListener('dragover', function (e) {
-    e.preventDefault();
-    var isFile = e.dataTransfer && e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') >= 0;
-    if (isFile) document.body.classList.add('dropping');
-  });
-  window.addEventListener('dragleave', function (e) { if (e.target === document.body || e.relatedTarget === null) document.body.classList.remove('dropping'); });
-  window.addEventListener('drop', function (e) {
-    e.preventDefault();
-    document.body.classList.remove('dropping');
-    var f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (!f || !/audio|mp3|wav|m4a|flac|ogg/i.test(f.type + f.name)) return;
-    engine.playFile(f).then(function () {
-      setStatus('TOCANDO: ' + f.name.toUpperCase(), true);
-      syncPlayBtn();
-    }).catch(function () { setStatus('ERRO AO TOCAR ARQUIVO', false); });
-  });
 
   /* ---------- textura global ---------- */
   var tex = document.getElementById('texture-overlay');
@@ -469,15 +596,18 @@
   }
 
   /* ---------- layout inicial ---------- */
-  (state.panels && state.panels.length ? state.panels : DEFAULT_LAYOUT).forEach(function (cfg) {
-    createPanel({ mod: cfg.mod, w: cfg.w, h: cfg.h, s: cfg.s });
-  });
+  rebuildPanels(state.panels);
+  applyLayout(state.layout);
+  save(); // grava a migração de escala (state.res) pra não re-multiplicar no próximo boot
 
   /* ---------- clique inicial pra liberar áudio ---------- */
   var splash = document.getElementById('splash');
   splash.addEventListener('click', function () {
     splash.classList.add('hidden');
-    beatFlow();
+    startComputerAudio();
+    // mostra o menu por alguns segundos pra você achar os controles, depois some
+    showChrome();
+    setTimeout(hideChrome, 3200);
   });
 
   /* ---------- loop principal ---------- */

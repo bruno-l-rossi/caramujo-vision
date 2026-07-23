@@ -43,7 +43,7 @@
 
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 2048;
-    this.analyser.smoothingTimeConstant = 0.78;
+    this.analyser.smoothingTimeConstant = 0.55; // menos média entre frames = resposta mais na hora
 
     this.anL = this.ctx.createAnalyser(); this.anL.fftSize = 2048;
     this.anR = this.ctx.createAnalyser(); this.anR.fftSize = 2048;
@@ -188,7 +188,7 @@
   AudioEngine.prototype.isPlaying = function () {
     if (this.fileEl) return !this.fileEl.paused;
     if (this.sourceKind === 'synth') return !this.synthPaused;
-    return this.sourceKind === 'mic';
+    return this.sourceKind === 'mic' || this.sourceKind === 'system';
   };
   AudioEngine.prototype.togglePlay = function () {
     if (this.fileEl) {
@@ -203,7 +203,39 @@
     return true;
   };
 
-  /* ---------- ENTRADA (BlackHole / mic) ---------- */
+  /* ---------- ÁUDIO DO SISTEMA: loopback nativo (sem driver, sem mic) ----------
+     Só roda no app de computador. Pede ao processo principal pra ligar o loopback,
+     puxa o som que sai das caixas via getDisplayMedia, joga fora o vídeo e escuta.
+     Não passa pelo microfone: é uma cópia direta do que o Mac está tocando. */
+  AudioEngine.prototype.startSystemLoopback = function () {
+    this.ensureCtx();
+    var self = this;
+    if (!(window.caramujo && window.caramujo.enableLoopback)) {
+      return Promise.reject(new Error('sem-loopback-nativo'));
+    }
+    return window.caramujo.enableLoopback().then(function () {
+      return navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    }).then(function (stream) {
+      // o getDisplayMedia exige pedir vídeo; a gente descarta e fica só com o áudio
+      stream.getVideoTracks().forEach(function (tk) { try { tk.stop(); } catch (e) {} stream.removeTrack(tk); });
+      return Promise.resolve(window.caramujo.disableLoopback()).catch(function () {}).then(function () {
+        if (!stream.getAudioTracks().length) throw new Error('loopback-sem-audio');
+        self.stopSource();
+        self.stream = stream;
+        self.source = self.ctx.createMediaStreamSource(stream);
+        self.source.connect(self.input);
+        self.monitor.gain.value = 0; // já sai nas caixas; não devolve pra não dar eco
+        self.sourceKind = 'system';
+        self.sourceLabel = 'ÁUDIO DO COMPUTADOR';
+        return 'native';
+      });
+    }).catch(function (err) {
+      try { window.caramujo.disableLoopback(); } catch (e) {}
+      throw err;
+    });
+  };
+
+  /* ---------- ENTRADA (BlackHole / mic) — plano B ---------- */
   AudioEngine.prototype.listInputs = function () {
     return navigator.mediaDevices.enumerateDevices().then(function (devs) {
       return devs.filter(function (d) { return d.kind === 'audioinput'; });
@@ -270,16 +302,17 @@
     this.centroid = sum > 0 ? (wsum / sum) / n : 0.3;
 
     var k = 1 - Math.pow(0.0001, dt);
-    this.bass += (bass - this.bass) * (bass > this.bass ? 0.6 : k * 0.9);
-    this.mid += (mid - this.mid) * (mid > this.mid ? 0.6 : k * 0.9);
-    this.high += (high - this.high) * (high > this.high ? 0.6 : k * 0.9);
+    // ataque quase instantâneo (segue o som na hora), queda ainda suave
+    this.bass += (bass - this.bass) * (bass > this.bass ? 0.9 : k * 0.9);
+    this.mid += (mid - this.mid) * (mid > this.mid ? 0.9 : k * 0.9);
+    this.high += (high - this.high) * (high > this.high ? 0.9 : k * 0.9);
 
     var t = this.time, rms = 0, peak = 0, a;
     for (i = 0; i < t.length; i++) { a = Math.abs(t[i]); rms += a * a; if (a > peak) peak = a; }
     rms = Math.sqrt(rms / t.length);
     this.rms = rms; this.peak = peak;
     this._peakHold = Math.max(peak, this._peakHold - dt * 0.3);
-    this.level += (rms - this.level) * (rms > this.level ? 0.5 : k);
+    this.level += (rms - this.level) * (rms > this.level ? 0.8 : k);
 
     // média de sessão (ignora silêncio)
     if (rms > 0.001) {

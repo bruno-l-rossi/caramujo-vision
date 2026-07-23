@@ -16,7 +16,7 @@ Depois, sempre que quiser abrir:
 npm start
 ```
 
-Abre a janela dedicada do Caramujo Vision, com ícone e permissão de microfone já pedida. Pra gerar o instalador .dmg de verdade:
+Abre a janela do Caramujo Vision (sem moldura, direto nos visuais), com o ícone do caramujo. Pra gerar o instalador .dmg de verdade:
 
 ```
 npm run dist
@@ -28,31 +28,45 @@ O instalador sai na pasta `dist/`.
 
 Dois cliques no `index.html` (Chrome) também funcionam. Clique na tela pra começar.
 
-## Fontes de áudio (seletor na barra)
+## Fonte de áudio
 
-- **LEGO · BEAT DA SEMANA**: na primeira vez pede o arquivo (wav/mp3 exportado do FL) e guarda dentro do app; depois toca direto, com play/pause no `▶`.
-- **UPLOAD DE FAIXA…**: escolhe qualquer mp3/wav e toca em loop. Arrastar o arquivo pra tela também funciona.
-- **ÁUDIO DO COMPUTADOR…**: captura tudo que sai das caixas. Precisa do driver gratuito BlackHole (uma vez só); passo a passo no botão `?`.
-- **BEAT DEMO (SINTÉTICO)**: beat interno em 135 BPM, sem depender de arquivo.
+Uma fonte só: **o áudio do computador**. Ele capta tudo que sai das caixas (FL Studio, YouTube, Spotify, o que for) direto, **sem driver nenhum** e sem passar pelo microfone. Na primeira vez o Mac pode pedir a permissão de gravação de tela (é só liberar; serve pra pegar o som do sistema, não pra gravar a tela). Se a captura nativa não pegar, ele cai sozinho pro BlackHole (passo a passo no `?`). O seletor da barra ainda deixa escolher um dispositivo de entrada específico, se você quiser.
 
 Regra de ouro dos visuais: o áudio é quem molda. Silêncio = tela parada e apagada; grave e beat empurram o relógio interno de cada módulo.
 
-## Módulos (16)
+## Módulos (20)
 
-Estúdio: Espectro (nivelamento de volume pra curva uniforme, hover com Hz/nota/dB, guias de faixa), Onda rolante (cor desliza do grave pro agudo conforme o conteúdo, cores ajustáveis), Loudness (LUFS, média da sessão e alvo), Espaço estéreo (nuvem orgânica com névoa e barra de largura), Osciloscópio (verde fósforo ou branco, até 3 camadas), Espectrograma (hover com frequência).
+Estúdio: Espectro (grade de Hz por décadas, curva principal preenchida + curva secundária, nivelamento de volume, hover com dB/Hz/nota+cents), Onda rolante (waveform cheia rolando, cor do grave pro agudo conforme o conteúdo), Loudness (LUFS, média da sessão e alvo), Espaço estéreo (nuvem orgânica com névoa e barra de largura), Osciloscópio (verde fósforo ou branco, até 3 camadas), Espectrograma (hover com frequência).
 
-Arte: PSY (líquido psicodélico), Túnel, Caleidoscópio, Ferro (fluido magnético com acabamento 3D: especular, sombreamento, textura de pele), Lissajous, Fita, Traço (linha viva), Campo de fluxo (pó de partículas), ASCII (símbolos configuráveis, escreva o que quiser), Ondas em camadas.
+Arte: PSY (líquido psicodélico), Túnel, Lissajous, Fita, Traço (linha viva), Campo de fluxo (pó de partículas), ASCII (símbolos configuráveis, escreva o que quiser), Ondas em camadas, Terreno (as ondas viram montanhas em perspectiva 3D, o grave levanta o relevo), Harmonógrafo (pêndulos desenhando teias finas que se acumulam), Enxame (bando de pontos: o beat espanta, a música reagrupa), Aurora (cortinas de luz verticais dobrando, irmã calma do PSY), Órbita (partículas gravitando um sol que pulsa no grave, rastros longos), Maré (ondas de várias fontes se cruzando, interferência por banda).
 
 Todos reagem ao mouse: estúdio informa, arte segue o cursor.
 
 ## Controles
 
-- Passe o mouse num painel: `⚙` abre a **gaveta de ajustes** na lateral (nunca cobre o visual), `‹ › ˄ ˅` tamanho, `●` gravar, `⛶` tela cheia, `✕` fechar.
-- Arraste o painel **pela barra do título** pra reordenar.
+O programa abre no modo visual: só os gráficos. **O menu do topo aparece quando o mouse encosta no topo da tela** (ou aperte `H` pra fixar). Os botões de **minimizar (–)** e **fechar (⏻)** ficam sempre no canto superior direito, independente do menu. A janela não tem moldura: arrasta ela pela barra do topo (⌘Q também fecha).
+
+- Passe o mouse num painel: `⚙` (em destaque) abre a **gaveta de ajustes** na lateral, `●` grava vídeo, `✕` fecha o painel. A gaveta tem um **✕ FECHAR** claro no topo.
+- **Redimensionar**: arraste as bordas do painel, em passos finos (dá pra ajustar quase pixel a pixel). Na grade, a borda direita muda a largura, a de baixo a altura e o canto os dois. Na LINHA você só mexe na largura; na COLUNA só na altura.
+- **Trocar de lugar**: arraste o painel **por qualquer ponto dele** e solte perto de outro. Uma linha marca onde ele vai entrar (como mover uma linha de planilha). Segurar numa borda redimensiona em vez de arrastar.
 - `+ MÓDULO` adiciona qualquer módulo, quantas vezes quiser.
-- Temas: EXO (padrão, mono estilo Form Vision), PSY, NEON, VHS. Textura de grão/VHS opcional.
-- Cada módulo pode usar cor própria (gaveta → Cor → Própria).
-- Layout e ajustes ficam salvos; `↺` restaura o padrão.
+- **LAYOUT**: GRADE (padrão), LINHA → (tudo numa fila horizontal) ou COLUNA ↓ (tudo empilhado). Estica a janela como quiser: os visuais escalam junto.
+- **Tela cheia** de um módulo: deixe só ele na tela (dica: template **vazio** + esse módulo) e dê `⛶` no topo.
+- Temas: EXO (mono estilo Form Vision), PSY, NEON, VHS, POENTE, GELO, OCEANO, FLORESTA, VAPORWAVE, RUBI, ÂMBAR.
+- Cor e **tema por módulo**: na gaveta de cada módulo dá pra escolher um tema próprio (ou seguir o global) e cor própria. Dá pra **mesclar temas** na mesma tela.
+- Layout e ajustes ficam salvos sozinhos. `⏻` fecha o app.
+
+## Templates
+
+Personalizou os gráficos, o layout e o tamanho da janela do jeito que gosta? Salva num template e volta pra ele com um clique.
+
+- `⭑` salva a personalização atual (visuais, ajustes de cada um, tema, layout e tamanho da janela) com um nome.
+- O seletor de **templates** carrega qualquer um salvo.
+- `🗑` apaga o template selecionado.
+
+Vem com dois prontos: **padrão** (os 20 módulos na tela) e **vazio** (tela limpa pra montar do zero). As variações de cor ficam nos **temas** (seletor ao lado), não como templates.
+
+Cada módulo tem ajustes próprios que fazem sentido pra ele (a `⚙` abre a gaveta): o espectro tem grade de Hz e cores das duas curvas, a onda rolante tem cor do grave/agudo e rolagem, a órbita tem gravidade do sol, a aurora tem dobra e número de cortinas, a maré tem ondulação, e assim por diante.
 
 ## Gravar vídeo
 
@@ -74,7 +88,8 @@ css/style.css     interface
 js/audio.js       captura e análise de áudio
 js/modules.js     os 16 módulos visuais
 js/app.js         grade, gaveta de ajustes, temas, gravação, fontes
-electron/main.js  janela do programa de computador
+electron/main.js  janela do programa (sem moldura, loopback de áudio, controles)
+electron/preload.js  ponte segura tela↔sistema (loopback + janela)
 test/smoke.js     teste de fumaça
 DESIGN.md         identidade visual (norte: Exo Form Vision)
 docs/contexto-continuidade.md  contexto pra retomar o projeto em outro chat
