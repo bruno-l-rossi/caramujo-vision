@@ -1,55 +1,107 @@
 <contexto_continuidade>
-<uso>Retomar o projeto Caramujo Vision em outro chat. Ler antes de mexer em qualquer coisa. Projeto pessoal do Bruno (rideblan / Caramujo Records): aplicar about-me-pessoal + anti-ai-writing-style, modo vibe-coding (CEO↔CTO: ele decide o que o produto faz, a IA decide todo o técnico, plano antes de obra, sem jargão).</uso>
+<uso>Retomar o Caramujo Vision em outro chat. Ler antes de mexer em qualquer coisa. Projeto pessoal do Bruno (rideblan / Caramujo Records): aplicar about-me-pessoal + anti-ai-writing-style, modo vibe-coding (CEO↔CTO: ele decide o que o produto faz, a IA decide todo o técnico, plano antes de obra, sem jargão).</uso>
 
 <projeto>
-Caramujo Vision: visualizador de áudio em tempo real. Vários módulos simultâneos em grade (layout tipo MiniMeters), estética moldada no Exo Audio Form Vision (exoaudio.com/plugins/form-vision): preto quase puro, monocromia branca delicada, linha fina, bloom suave, interface que some. Tema EXO é o padrão; PSY/NEON/VHS alternativos. Identidade: logo espiral bege (caramujo) + "CARAMUJO VISION" sem separador. Acento da interface: branco papel #f0efe9 (o verde ácido foi removido de propósito).
-Pasta: OUTPUTS/caramujo-vision/. Arquivos: index.html, css/style.css, js/audio.js (motor), js/modules.js (16 módulos), js/app.js (grade/gaveta/temas/gravação/fontes), electron/main.js + package.json (app desktop), test/smoke.js (roda com `node test/smoke.js .`, stubs de navegador, sem dependências), DESIGN.md (identidade obrigatória), build/icon.png, assets/logo.png.
+Caramujo Vision: visualizador de áudio em tempo real, app de desktop (Electron). Vários módulos simultâneos em grade/linha/coluna. Referências de mercado: MiniMeters (precisão e grade de instrumento) e Exo Audio Form Vision (near-black, monocromia delicada, linha fina).
+PROPOSTA COMPETITIVA: mesmas funções de medição dos concorrentes, mas com visuais muito mais variados e estéticos, servindo também pra CRIAR CLIPES (gravação por painel). Medição + estética + criação de conteúdo.
+Pasta: OUTPUTS/caramujo-vision/. Arquivos: index.html, css/style.css, js/audio.js (motor), js/modules.js (módulos), js/app.js (grade/gaveta/temas/gravação), electron/main.js + preload.js + package.json (app desktop), test/smoke.js (`node test/smoke.js .`), DESIGN.md (identidade obrigatória), build/icon.png, assets/logo.png.
 </projeto>
 
-<conceitos_chave>
-- Portão de energia (CV.gate): áudio molda tudo; silêncio = módulos de arte param e apagam; o relógio interno (m.st.pt) só anda com energia/beat. Regra inegociável do Bruno.
-- Fonte de áudio (SIMPLIFICADA): a UI agora tem UMA fonte só, ÁUDIO DO COMPUTADOR (loopback do sistema), + os devices de entrada como alternativa no seletor. REMOVIDOS da interface: beat da semana (LEGO), upload de faixa, drag-drop de arquivo e beat demo sintético — o Bruno pediu "só do computador, já testamos". IMPORTANTE: o motor (audio.js) MANTÉM startSynth/startDemo/playFile porque o test/smoke.js usa engine.startSynth() pra rodar sem áudio real; não apague esses métodos. app.js: removidos beatFlow/idb/saveBeat/loadBeat/pickFile/playBeatFile e o handler de drag-drop; agora tem startComputerAudio() (nativo → fallback BlackHole) chamado no splash e no seletor. Botão ▶ escondido (áudio ao vivo não pausa).
-- ÁUDIO DO COMPUTADOR (mudou): agora é LOOPBACK NATIVO do sistema, sem BlackHole e sem passar pelo mic. No app de desktop, main.js liga as flags do Chromium (MacLoopbackAudioForScreenShare + MacSckSystemAudioLoopbackOverride + PulseaudioLoopbackForScreenShare) e um setDisplayMediaRequestHandler que devolve {video: source[0], audio:'loopback'}. A tela (audio.js: startSystemLoopback) chama caramujo.enableLoopback() → getDisplayMedia({video:true,audio:true}) → joga fora o vídeo → disableLoopback(). sourceKind='system'. Pode pedir permissão de gravação de tela 1x no macOS. Se falhar (macOS antigo, permissão negada, source vazio), cai automático no PLANO B: BlackHole via startInput (o velho getUserMedia por device). Ponte em electron/preload.js (contextBridge window.caramujo). Só roda no Electron; no navegador puro cai direto no BlackHole.
-- Janela sem moldura (frame:false). Sem botões nativos: barra do topo (#topbar) é sobreposta, escondida por padrão, some/aparece com body.chrome. Aparece com mouse no topo (clientY<=6) ou tecla H (fixa/solta). Arrasta a janela por ela (-webkit-app-region: drag; controles têm no-drag). Botões #winmin/#winclose falam com caramujo.winMinimize/winClose; ⌘Q fecha (menu nativo do mac continua, não removi). Handle discreto #edgetop.
-- Layout (novo): LAYOUTS grid/row/col via classe no body (layout-row / layout-col = flex numa linha/coluna, painéis flex:1). Resize proporcional é automático (ResizeObserver por painel redesenha o canvas). Seletor #layout na topbar.
-- Templates (novo): localStorage 'cv-templates-v1' = { nome: {theme,texture,layout,panels:[{mod,w,h,s}], win:{x,y,width,height}} }. Salva com ⭑ (pergunta nome, pega o tamanho da janela via caramujo.winGetBounds), carrega no seletor #tpl (aplica tudo + winSetBounds), apaga com 🗑. Separado do estado de trabalho.
-- Ícone: build/icon.png agora É o assets/logo.png (copiado). Dock em dev via app.dock.setIcon(logo). electron-builder gera o icns do build/icon.png (1024). Nome do app: app.setName('Caramujo Vision') no topo do main.js (via npm start o mac ainda empresta "Electron" no ⌘Tab por causa do bundle; nome certo só ao empacotar com npm run dist).
-- Botão ⏻ SAIR na topbar (#appquit) fecha o app (chama caramujo.winClose → window-all-closed → quit). Some no navegador. ⌘Q também fecha (menu nativo do mac mantido de propósito).
-- Sem limite de tamanho: minWidth/minHeight da janela = 1, painéis min-width/min-height 0, grid-auto-rows minmax(0,1fr). Dá pra deixar bem fino/curto; loop pula painel com w<4.
-- Temas novos (paletas) além de mono/psy/neon/vhs: poente, gelo, vapor(vaporwave), floresta, ambar. Em PALETTES (modules.js), no THEME_HUE do glFrame (shaders) e em THEMES (app.js). Mono continua cinza (u_sat=0); psy gira; resto tem hue fixo.
-- Templates de paleta semeados 1x (marcador localStorage 'cv-tpl-seed'='v2', NÃO sobrescreve os seus nem ressuscita apagados): padrão, neon, rua (vhs), poente, gelo, vaporwave, floresta, âmbar. paletteTpl() casa tema + onda rolante (corGrave/corAgudo) + espectro (corMain/corSec) + scope fosforo=0 na mesma paleta; arte segue o tema global.
-- Interface repaginada estilo Exo (mais clean): vars novas (--panel #0a0a0c, --border 0.06, --border-hi 0.16, --radius 12px), painéis com cantos 12px + hairline interno + sombra suave + hover que acende a borda, topbar/gaveta com backdrop-blur forte, controles em pílula, gap 7px. IDs/classes preservados.
-- Barra reorganizada em grupos <span class="grp"> com divisórias finas (marca | fonte | aparência | +módulo | templates | utilidades | janela). CSS: #topbar .grp e .grp + .grp { border-left }. winclose REMOVIDO; janela agora só winmin (–) + appquit (⏻, fecha o app). ▶ escondido.
-- Padrão = TODOS os 20 módulos (DEFAULT_LAYOUT). Template 'vazio' = panels []: rebuildPanels usa Array.isArray(list) (array vazio manda; só cai no padrão se list==null). Seed bump 'v4': templates agora são SÓ 'padrão' e 'vazio'; as paletas viraram só TEMAS (o seed v4 deleta os presets de paleta antigos: neon/rua (vhs)/poente/gelo/vaporwave/floresta/âmbar). paletteTpl removido; baseLayout mantido. Templates de nome próprio do usuário ficam intactos.
-- Redimensionar painel arrastando: alças .rz no createPanel (rz-r direita=largura, rz-b baixo=altura, rz-c canto=os dois). mousedown → mousemove na window calcula delta em células (colUnit=rect.w/gw, rowUnit=rect.h/gh), atualiza p.gw/gh (clamp 1..12 / 1..8), applySpan ao vivo, save no mouseup. Só na grade (ignora em layout-row/col; CSS esconde as alças lá). Os botões ‹ › ˄ ˅ continuam pro passo discreto. No smoke, querySelectorAll('.rz') é stub → sem handler, sem erro.
-- Temas repaginados pra ter mais variedade/distinção (Bruno achou que mudavam pouco entre si): PALETTES com 4 cores bem espalhadas por tema; adicionados 'oceano' (azuis/teal) e 'rubi' (vermelhos/rosa). THEME_HUE atualizado pros shaders. THEMES (app.js): mono/psy/neon/vhs/poente/gelo/oceano/floresta/vapor/rubi/ambar.
-- Tema POR MÓDULO (mesclar temas): CV.themeOf(m) = m.s.theme se != 'global' senão CV.theme global. Usado em CV.pal, CV.isMono, glFrame (u_hue/u_sat) e no spectrograma. defs() ganhou theme:'global'. Na gaveta (toggleCfg), dentro do bloco tint!==false, tem select data-k="theme" (Segue o global + THEMES) além de Cor/Matiz. Handler genérico salva string em p.s.theme.
-- Redimensionar arrastando BORDAS (não tem mais setinha nos botões nem ‹›˄˅): alças .rz. Na GRADE muda gw/gh (applySpan). Na LINHA a rz-r muda a largura via flex-grow=p.gw; na COLUNA a rz-b muda a altura via flex-grow=p.gh. applyLayout seta el.style.flexGrow (gw no row, gh no col, '' no grid). CSS esconde rz-b/rz-c no row e rz-r/rz-c no col.
-- Topbar/janela: reveal com zona clientY<=34 (mostra) / >50 (esconde) além do H. Removidos: botão ? (help), botão ↺ (reset) e o seletor de TEXTURA (state.texture forçado 'off' sempre; TEXTURES/elTexture apagados). O modal de ajuda continua e abre sozinho se a captura falhar (showHelp no fallback). winctl (minimizar – e fechar ⏻) SAIU da topbar pra um overlay #winctl fixo no top-right, sempre visível (fora do #topbar). Status "OUVINDO O COMPUTADOR" virou vazio.
-- Botões do painel (pbar): sobraram ⚙ (classe .cfg, em destaque, sempre acessível; ptitle trunca pra não empurrar), ● (rec) e ✕ (close). Removidos ‹›˄˅ (resize agora é arrasto) e ⛶ (tela cheia é só do app inteiro via #fullapp: deixa 1 módulo na tela e dá fullscreen). Gaveta ganhou botão "✕ FECHAR" destacado (Bruno achou difícil fechar no modo linha/coluna).
-- Reveal do topo: SÓ no topo extremo (clientY<=4), senão o menu cobria os botões (⚙/✕) dos módulos da 1ª fileira. Esconde em >44. H ainda fixa.
-- Grade FINA pra redimensionar liso (Bruno reclamou dos "pulos"): grid-template-columns repeat(240,1fr) (era 12). DEFAULT_LAYOUT e o + MÓDULO em escala ×20 (aparência idêntica, passos ~1/240). GRID_RES=240, GW_MAX=240, GH_MAX=200. Migração automática do estado salvo: if (state.panels && !state.res) multiplica w/h por 20 e marca state.res=240 (invisível porque as linhas são 1fr → escalar tudo junto preserva as proporções). Seed dos templates foi pra 'v5' (padrão reseeded na escala nova; vazio []). Resize e flex-grow (row/col) usam os mesmos gw/gh.
-- Reorder (trocar de lugar): agora o PAINEL INTEIRO é draggable (el.setAttribute('draggable','true')), não só a .pbar — arrasta por qualquer ponto. Marcador de inserção estilo planilha: no dragover a classe .ins-before/.ins-after (conforme a metade do alvo, X no grid/row e Y no col) desenha uma LINHA (::after, accent, z-index 6 pra ficar acima do canvas) na borda onde vai entrar; clearDropMarks() limpa. Drop faz grid.insertBefore(src, after ? el.nextSibling : el). IMPORTANTE: a alça .rz de resize seta el.draggable=false no mousedown e restaura no mouseup, senão segurar a borda começaria a arrastar em vez de redimensionar. (.drop-target antigo foi removido.)
-- Latência áudio→visual reduzida (Bruno sentiu delay): analyser.smoothingTimeConstant 0.78→0.55; ataque das bandas bass/mid/high 0.6→0.9 e do level 0.5→0.8 (queda segue suave); ataque do espectro e da onda rolante 9-10→22 (sobe quase na hora, cai suave). anL/anR já eram 0. fftSize mantido 2048 (detalhe de grave). A latência de captura do loopback em si não dá pra mexer.
-- Controles por módulo (não mais genéricos pra todos): toggleCfg só mostra Cor/Matiz genéricos se def.tint !== false; spectrum e wavescroll têm tint:false (cor própria). Schemas curados: spectrum sem 'speed' (não rola), spectrogram ganhou 'contraste' (expoente), aurora ganhou 'dobra'(u_a) e 'cortinas'(u_b) fiados no shader, mare ganhou 'ondulacao' (escala o k das fontes), orbita ganhou 'gravidade' (escala G) e 'speed' fiado na integração. glow tirado de quem não usa (spectrogram/mare/orbita).
-- Módulos (id → nome) — 18 no total, ferro e kaleido REMOVIDOS (kaleido era parecido demais com psy): spectrum (refeito à la MiniMeters: 220 pontos, bins interpolados, grade de décadas com 100Hz/1kHz/10kHz, curva principal quente preenchida via sliders corMain/corSec + curva secundária fria mais lenta, hover = dB/Hz/nota+cents via CV.noteCents), wavescroll (waveform CHEIA sólida rolando, cor grave→agudo por centroide via corGrave/corAgudo, núcleo RMS + fios de crista), loudness (só LUFS: barra + média + alvo), gonio "Espaço estéreo" (nuvem orgânica SEM anéis/mira: Bruno detestou cara de alvo; barra de largura na base), scope (fosforo 0 = branco), spectrogram, psy (WebGL líquido), tunnel, lissa, trace "Traço" (linha viva), flow "Campo de fluxo" (pó de partículas), ascii (símbolos configuráveis, input text no ⚙), wavelayers "Ondas em camadas", silk "Fita", terreno (wavelayers em perspectiva 3D: cordilheira rolando, grave levanta o relevo, painéis de trás cobertos pelos da frente), harmonografo (curvas de pêndulo amortecidas que acumulam teia, irmão do lissa; mouse gira), enxame (bando de ~900 pontos perseguindo um alvo que passeia, beat espanta radial, música/gate reagrupa; mouse vira o alvo), aurora (WebGL: cortinas verticais dobrando com fbm, irmã calma do psy; verde/mono conforme tema), orbita (gravidade N-corpos simplificada: partículas orbitam um sol que pulsa no grave/beat, rastros por trail; mouse move o sol), mare (interferência de 3 fontes de onda em pontos diferentes por banda, malha de pontos = moiré; DE PROPÓSITO não é anel concêntrico pra fugir da "cara de alvo").
-- Shaders compartilham GLSL_LIB (noise/fbm/pal + uniforms u_res u_mouse u_t u_bass u_mid u_high u_beat u_hue u_sat u_a u_b u_gate) via CV.glSetup/CV.glFrame.
-- Ajustes: gaveta lateral fixa (#drawer), nunca cobre o visual; grid ganha margin-right quando aberta. Arrasto de painel só pela barra de título (senão rouba o drag dos sliders).
-- Interação: todo módulo reage ao mouse (estúdio informa, arte segue/entorta o cursor).
-- Estado no localStorage 'cv-state-v4' (tema, textura, LAYOUT, painéis+ajustes). Mudou default? Sobe a versão da chave pra resetar (templates ficam à parte, não resetam).
-- Espectro e Onda rolante enriquecidos (mais smooth/profundidade): espectro com 180 pontos, magnitude interpolada entre bins, camada fantasma de decaimento lento atrás (slider Profundidade), reflexo interno (slider Reflexo), bloom em 2 traços, piso que respira. Onda rolante com bloom externo additivo, gradiente de corpo mais rico, núcleo RMS mais claro e fios de crista no topo/base (contorno rolando). Cor ainda pelo centroide.
-- Gravação por painel: canvas.captureStream + trilha de áudio do recordDest, sai .webm.
-</conceitos_chave>
+<estado_atual>
+- 16 módulos. Estúdio (6): spectrum, wavescroll, loudness, gonio (espaço estéreo), scope, spectrogram. Arte (10): psy, lissa, trace, flow, wavelayers, silk, enxame, aurora, cordas, malha.
+- REMOVIDOS por decisão do Bruno (deletados do registry no fim do modules.js, código inerte): terreno, tunnel, mare, ascii, harmonografo, tinta, barras, colmeia, vitral, cascata, tunelfio, no, orbita, contorno. NÃO ressuscitar sem ele pedir.
+- Estado: localStorage 'cv-state-v7'. Templates: 'cv-templates-v1', seed 'cv-tpl-seed' = 'v14'. Subir a versão da chave reseta.
+- Templates prontos (seed v14): 19, numerados com ZERO À ESQUERDA (01..19) pra não desordenar na lista alfabética. Cada um guarda `pos` e ao ser escolhido já encaixa a janela. Cobrem perfis (mixagem/master/grave/válvula), visual (clipe vertical, show, ambiente, rua, submerso, brasa, neve, deserto, sonho), misto (produção), encaixados (régua no rodapé, faixa no topo, coluna à direita, torre à esquerda) e tela limpa.
+</estado_atual>
+
+<decisoes_de_design>
+- Curvas refinadas (norte MiniMeters): linha nítida 1px, glow só como respiro (×0.4), preenchimento baixo e chapado, pico-hold como fio contínuo, grade de Hz com régua de base.
+- Arte: menos glow e menos fade que o original; impacto vem da forma definida, não do bloom. Preto mais fundo e vinheta fechada nos shaders.
+- Interface: grade de instrumento, painéis colados por hairline quase invisível (0.035), sem sombra, sem canto, fundo #050506.
+- Cor: TUDO segue o tema global (espectro e onda rolante também). Cor própria só se escolher "Própria" na gaveta.
+- Portão de energia (CV.gate): silêncio = arte para e apaga. Regra inegociável.
+- Rastro INTUITIVO: slider 0..1, maior = mais rastro. Converte via CV.trailClear(v) = 0.5 - 0.47v (alpha de limpeza). Se criar módulo com rastro, usar essa função.
+</decisoes_de_design>
+
+<interface>
+- Barra do topo escondida. Ordem dos grupos: marca | TEMPLATES | POSIÇÃO | TEMA | + VISUAL | 📌 ⛶. Ver <interface_v2> pro comportamento atual do menu.
+- Seletor de fonte de áudio REMOVIDO da UI (só existe uma fonte). Os elementos #source e #play seguem no HTML escondidos porque o app.js ainda os referencia.
+- Status foi pro canto inferior esquerdo (antes sobrepunha os botões de janela). Mensagens de template removidas (info duplicada).
+- Botões de janela (#winctl: – e ⏻) só aparecem com o menu aberto, senão tapavam o ⚙ do painel do canto superior direito. CUIDADO: o handler de "clicar fora fecha o menu" precisa IGNORAR o #winctl, senão o menu some antes do clique chegar e o ⏻ não fecha o app (bug que já aconteceu). O ⏻ chama cv-win-close, que hoje faz app.quit() direto (antes era win.close()).
+- Mover a janela: alça ✥ na barra de cada painel (-webkit-app-region: drag). Reordenar: alça ⠿ (draggable). ATENÇÃO: NUNCA colocar app-region drag na barra inteira, isso engole cliques/mousemove no Electron e quebra o menu e o reorder (já aconteceu).
+- Gaveta de ajustes: faixa no RODAPÉ (188px) que encolhe a altura da grade. Não cobre módulo nem botão, funciona em janela pequena.
+- ENCAIXE (barra fixa, tipo Stick do MiniMeters): main.js cv-win-stick(pos) com off/bottom/top/left/right. Horizontal = altura 190 e largura da tela; lateral = largura 260 e altura da tela. Guarda o bounds anterior pra voltar. NÃO mexe em alwaysOnTop (isso é o 📌, cv-win-pin).
+- Menu: aba ☰ MENU no TOPO-CENTRO (onde nenhum painel tem botão). Invisível até o mouse chegar a 34px do topo (body.peek). O topbar tem padding-right 104px pra não passar por baixo dos botões de janela.
+- JANELA ESTREITA (barra lateral): body.narrow quando innerWidth < 560. O topbar vira coluna rolável (grupos empilhados com divisória em cima), winctl vai pro rodapé e a gaveta ocupa 62% da altura. Sem isso o menu ficava inacessível no modo lateral.
+- TEMA muda o FUNDO também: THEME_BG em modules.js (bg/panel/grid por tema) + applyThemeChrome() no app.js escrevendo as CSS vars --bg/--panel/--hair. Os módulos usam CV.bgOf(m) pro fundo e CV.trailFill(m, v) pro véu de rastro, então o rastro também toma a cor do tema (antes era preto fixo, por isso os temas mudavam pouco).
+- Grade: posições fixas via packLayout() (skyline best-fit). Ver <interface_v2> pro resize de fronteira.
+</interface>
+
+<audio>
+- Fonte única: loopback do sistema. main.js liga as flags: MacLoopbackAudioForScreenShare, MacCatapSystemAudioLoopbackCapture (Core Audio taps, macOS 15+, o caminho que PODE dar estéreo), MacSckSystemAudioLoopbackOverride, PulseaudioLoopbackForScreenShare. Plano B: BlackHole via startInput.
+- CAPTURA NATIVA (estéreo, implementada): dependência `native-recorder-nodejs` (ScreenCaptureKit, binários prontos N-API, sem driver externo). No macOS entrega ESTÉREO fixo, PCM 16-bit LE, 48kHz. main.js tem cv-native-available/start/stop e manda os buffers por 'cv-native-audio'. audio.js: startNativeCapture() → ensureCtxAtRate(48000) (recria o contexto na taxa do nativo e chama buildGraph) → makeSrcNode() cria um worklet-fonte 'cv-src' com fila, e pushNativePCM() desintercala L/R. Ordem de tentativa em startComputerAudio(): NATIVO → loopback do Chromium (mono) → BlackHole. Status mostra "ESTÉREO NATIVO" quando dá certo.
+- CUIDADO (já quebrou o áudio uma vez): NÃO passar constraint exigente pro getDisplayMedia (channelCount/latency) — o backend rejeita a captura inteira. E NÃO setar channelCountMode/channelCount em nó de origem (MediaStreamAudioSourceNode não tem entrada, lança erro). Só em nós de ganho, e dentro de try/catch.
+- LATÊNCIA: analyser.fftSize 1024 (era 2048), smoothing 0 (zero média entre quadros), latencyHint 0, ataque quase instantâneo. A fila do worklet-fonte guarda no MÁXIMO 3 blocos e descarta o mais velho quando enche (era 24: isso sozinho segurava dezenas de ms). O worklet de nível reporta a cada 128 amostras. AudioWorklet ('cv-lvl', criado via Blob URL em audio.js setupWorklet) calcula RMS/pico a cada 256 amostras e alimenta engine.liveRms/livePeak: o nível não espera a janela da FFT. O resto do delay é o buffer da captura do sistema, só resolve com captura nativa.
+- analysisGain = 1.8 (o loopback chega mais baixo que o MiniMeters). Não mexe no monitor nem na gravação.
+- IMPORTANTE: audio.js MANTÉM startSynth/startDemo/playFile porque test/smoke.js usa engine.startSynth(). Não apagar.
+</audio>
+
+<performance>
+- dpr limitado a 1.5 (era 2) e multiplicado por window.CV_QUALITY. Textura só roda se state.texture !== 'off' (hoje sempre 'off').
+- QUALIDADE ADAPTATIVA (app.js watchPerf): mede o tempo médio de quadro por segundo; abaixo de ~42fps baixa CV_QUALITY em passos até 0.55 e redimensiona os canvases; acima de ~66fps devolve. Tem cooldown pra não oscilar.
+- Otimizações de desenho feitas (a regra é: agrupar traços, evitar shadowBlur por item, fillRect no lugar de arc):
+  · enxame: os fios viram 4 traços agrupados por faixa de opacidade (eram ~4000 beginPath/stroke por quadro) e os nós saem em 2 passes (comuns / estrelas com brilho ligado uma vez).
+  · malha: uma linha inteira por traço, em 3 faixas de profundidade (eram ~600 chamadas por quadro).
+  · flow: parou de ligar/desligar shadowBlur por partícula (era o gargalo); estrela virou ponto maior.
+  · gonio: fillRect no lugar de arc (~340 arcos por quadro).
+- Módulos ainda mais caros: flow (~520 partículas), enxame (O(n²) na distância, cuidado ao subir densidade), psy/aurora (shaders, custo é de GPU).
+</performance>
 
 <gostos_do_bruno>
-Ama: wavelayers, lissajous, flow, psy; quer mais nessa linha unindo performance e visual (por isso terreno/harmonografo/enxame/aurora). Detesta: visual que anima solto do áudio, cara de mira/alvo (cuidado com MARÉ), menu cobrindo o gráfico, IA com cara de IA, módulo redundante (removeu ferro e kaleido). Espectro e onda rolante: quer parecidos com MiniMeters (print de referência: waveform vermelho/ciano à esquerda, spectrum vermelho preenchido + azul + grade de Hz + leitura dB/Hz/nota+cents à direita). Beat de referência: LEGO 135 BPM Gm (hard).
+Ama: wavelayers, lissajous, flow, psy, malha, contorno. Quer visual impactante com POUCO brilho e pouco fade, mais monocromático que colorido. Detesta: visual que anima solto do áudio, cara de mira/alvo, menu cobrindo o gráfico, IA com cara de IA, módulos redundantes entre si (por isso cortou vários), visual "amador".
+Ao propor módulo novo: tem que ser claramente diferente do que já existe e visualmente forte. Ele testa e corta sem dó.
 </gostos_do_bruno>
 
 <pendencias>
-1. Módulos novos: TODA a lista já CONSTRUÍDA — TERRENO, HARMONÓGRAFO, ENXAME, AURORA (1ª leva) + ÓRBITA e MARÉ (2ª leva). MARÉ foi feita como interferência de fontes (moiré), não alvo concêntrico, pra fugir do que ele detesta. Se quiser mais visuais, criar na linha do que ele ama (wavelayers/lissa/flow/psy) e sempre com o portão de energia.
-2. Subir repo GitHub (comandos no README) + ligar Cloudflare Pages (guiar clique a clique).
-3. Testar o loopback nativo numa máquina real: `npm install` (pega o electron novo) + `npm start`, escolher ÁUDIO DO COMPUTADOR, ver se pega o som sem BlackHole e liberar a permissão de gravação de tela. BlackHole virou plano B (só se o nativo falhar); modal ? tem o passo a passo dele.
-4. Desktop: `npm install` + `npm start` roda; `npm run dist` empacota dmg (electron-builder, ícone = build/icon.png = logo). Não testado em máquina real ainda.
-5. Conferir visual real dos módulos (inclusive espectro/onda rolante enriquecidos e os layouts linha/coluna) contra o site do Exo (teste foi só smoke, sem render).
+1. ESTÉREO NATIVO: código pronto, INSTALAÇÃO ainda falhando na máquina do Bruno. Node 25.x não tem binário pronto do native-recorder-nodejs, então precisa compilar, e faltava cmake/cmake-js. Além disso o `npm install` diz "up to date" e PULA o pacote (dependência opcional que já falhou antes) — por isso o script usa --force --foreground-scripts. Passos no README: xcode-select --install + brew install cmake + npm i -g cmake-js, depois `npm run audio-nativo` e `npm run audio-nativo-check` (esse último diz se o módulo carrega e lista os devices). Enquanto não resolve, roda em mono pelo loopback. Status mostra "NATIVO OFF: <motivo>" e o console tem o diagnóstico (cv-native-why). Alternativa que funciona sem compilar: BlackHole 2ch (plano B já implementado).
+2. Instalador: `npm run dist` gera o .dmg (arm64 + x64) em dist/. Ainda NÃO testado numa máquina real. Sem assinatura Apple, o usuário precisa do "abrir mesmo assim" na primeira vez (ver README).
+3. Subir repo GitHub + Cloudflare Pages (opcional, versão web).
+4. Ideias estratégicas discutidas: presets de exportação pra Reels/YouTube (proporção fixa antes de gravar), gravação em tela cheia, mais visuais na linha malha/contorno.
 </pendencias>
+
+<interface_v2>
+- POSIÇÃO: um seletor só (LAYOUTS em app.js) que junta arranjo + encaixe da janela: JANELA grade/linha/coluna e BARRA topo/rodapé/esquerda/direita. Antes eram dois menus redundantes (layout + barra). applyPosition(id, skipDock) aplica os dois lados; cada item é [id, rótulo, dock, layout].
+- PIN (📌) separado: cv-win-pin liga alwaysOnTop. O encaixe (cv-win-stick) não mexe mais em alwaysOnTop.
+- Seletores mostram a CATEGORIA quando fechados (TEMPLATES, POSIÇÃO, TEMA, + VISUAL) e a lista com ✓ no atual quando abertos. Helper fillSelect(el, label, items, current); o valor volta pra '' depois de escolher. Ao mudar algo, chamar fillSelect de novo pra atualizar o ✓.
+- MENU: encostar no topo só REVELA a aba ☰ MENU (body.peek). O menu abre no CLIQUE e fica até clicar fora. Não abre mais no hover, senão cobria os botões dos módulos da fileira de cima.
+- RESIZE na GRADE: arrastar uma borda mexe nos DOIS painéis que se encostam nela (nbR à direita, nbB embaixo), o lado oposto fica parado. Em linha/coluna o vizinho é o próximo da fila.
+- Splash tem 3 passos numerados pra quem abre pela 1ª vez.
+</interface_v2>
+
+<temas_v2>
+- THEME_BG (modules.js) agora tem bg, panel, grid, text, ink e light. applyThemeChrome() no app.js escreve --bg/--panel/--text/--accent/--hair/--border e liga body.light.
+- Temas novos: PAPEL (fundo claro #e9e7e0 com traço quase preto, o invertido) e ARDÓSIA (cinza-azulado com creme, inspirado no print do MiniMeters). Os outros ganharam fundos bem mais distintos entre si.
+- Tema claro: CV.isLight(m) diz se o fundo é claro. CV.gridInk(m, a) devolve tinta preta ou branca pra grades/réguas, label(...) recebe `m` e escurece sozinho, e os textos/caixas de hover invertem. CSS tem um bloco body.light pro cromo do app.
+- CV.isMono continua só pro tema 'mono'; o PAPEL passa pela paleta (PALETTES.papel devolve tons escuros), então nenhum módulo precisou de código extra.
+</temas_v2>
+
+<suavidade>
+- CV.rate(m, d, dt, base, gateAmt, beatAmt) devolve a velocidade do relógio interno JÁ SUAVIZADA. O beatPulse pula de 0 a 1 num degrau: usado cru, aurora/malha davam trancos. Usar sempre CV.rate em módulo novo com movimento contínuo.
+- Malha também suaviza amp/bass/mid (m.st.ampS/bassS/midS).
+- Loudness: número com ataque 2.2 e queda 0.45 (bem lento), pra não oscilar a cada segundo.
+- Espaço estéreo: 'Ambiente' (névoa) vem em 0 por padrão.
+</suavidade>
+
+<v3_final>
+- TEMAS (14, todos com identidade própria): escuros preto/neon/vhs/oceano/floresta/rubi/ambar/poente/psy; CLAROS papel/gelo/areia/lavanda; médio ardosia. THEME_BG define bg, panel, grid, text, ink e light. PALETTES tem 4 cores por tema (nos claros as cores são ESCURAS, senão somem no fundo).
+- CV.blend(m, c, on): mistura adaptativa. Fundo escuro usa 'lighter' (soma luz); fundo claro usa 'multiply' (as camadas escurecem). Era o motivo do tema papel ficar lavado. TODO módulo novo deve usar CV.blend em vez de globalCompositeOperation direto. O glow (shadowBlur) é zerado nos temas claros.
+- 'mono' foi renomeado pra 'preto' (migração automática no boot). CV.isMono aceita os dois.
+- POSIÇÃO: 5 opções só (TELA NORMAL + 4 barras). As opções "janela linha/coluna" saíram: quem quer linha/coluna usa uma barra.
+- RESIZE na grade: pega TODOS os painéis que encostam na borda arrastada (nbRs/nbBs) e move a fronteira inteira junta, com o limite dado pelo vizinho mais apertado. Evita sobreposição quando um painel faz fronteira com dois.
+- window.prompt NÃO EXISTE no Electron (por isso o ⭑ não salvava). Agora tem a caixinha #ask (askName/askClose) no lugar. Não voltar a usar prompt().
+- Botão ? (#helpbtn) no #winctl, à esquerda do minimizar: modal com como usar, estado do áudio (mono/estéreo), seletor de entrada de áudio e contato.
+- SPLASH REMOVIDO: o app abre direto nos visuais e o áudio inicia sozinho; um listener de clique único destrava o contexto caso o navegador exija gesto.
+- Distribuição: package.json com mac.identity=null e hardenedRuntime=false (build local sem conta Apple), dmg com artifactName Caramujo-Vision-${version}-${arch}.dmg, compression maximum, arm64 + x64.
+- docs/v2-claude-design.md: insumo + prompt pronto pro Bruno refinar visuais/paletas/módulos no Claude Design na v2.
+</v3_final>
 </contexto_continuidade>

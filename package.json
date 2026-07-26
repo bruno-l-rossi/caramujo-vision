@@ -2,14 +2,21 @@
   "name": "caramujo-vision",
   "productName": "Caramujo Vision",
   "version": "1.0.0",
-  "description": "Visualizador de áudio do rideblan / Caramujo Records",
+  "description": "Visualizador de audio em tempo real: medidores de estudio e arte que reage a musica",
   "author": "rideblan",
   "license": "UNLICENSED",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --mac dmg",
-    "test": "node test/smoke.js ."
+    "dist": "electron-builder --mac dmg --publish never",
+    "test": "node test/smoke.js .",
+    "audio-nativo": "npm install native-recorder-nodejs --save-optional --force --foreground-scripts",
+    "audio-nativo-check": "node -e \"try{const m=require('native-recorder-nodejs');const A=m.AudioRecorder||m.default&&m.default.AudioRecorder;console.log('OK: modulo carregou');console.log('saidas:',JSON.stringify((A.getDevices('output')||[]).map(d=>d.id+':'+d.name)));}catch(e){console.log('FALHOU:',e.message)}\"",
+    "dist-zip": "electron-builder --mac dmg zip --publish never"
+  },
+  "//": "dist gera o .dmg em dist/: o usuário final só abre e arrasta pra Applications, sem terminal",
+  "optionalDependencies": {
+    "native-recorder-nodejs": "^1.2.0"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -20,7 +27,41 @@
     "productName": "Caramujo Vision",
     "mac": {
       "category": "public.app-category.music",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "O Caramujo Vision escuta o áudio do computador pra desenhar os visuais.",
+        "NSAudioCaptureUsageDescription": "O Caramujo Vision capta o som que sai das caixas pra desenhar os visuais.",
+        "NSScreenCaptureUsageDescription": "O Caramujo Vision usa a captura do sistema so pra ouvir o audio que sai das caixas."
+      },
+      "identity": null,
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Caramujo Vision",
+      "contents": [
+        {
+          "x": 140,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "artifactName": "Caramujo-Vision-${version}-${arch}.dmg"
     },
     "files": [
       "index.html",
@@ -28,7 +69,12 @@
       "js/**",
       "assets/logo.png",
       "electron/**",
-      "build/icon.png"
-    ]
+      "build/icon.png",
+      "node_modules/native-recorder-nodejs/**"
+    ],
+    "asarUnpack": [
+      "node_modules/native-recorder-nodejs/**"
+    ],
+    "compression": "maximum"
   }
 }

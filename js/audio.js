@@ -39,14 +39,22 @@
   AudioEngine.prototype.ensureCtx = function () {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     var AC = window.AudioContext || window.webkitAudioContext;
-    this.ctx = new AC({ latencyHint: 'interactive' });
+    // latencyHint 0 = o menor buffer que a placa aceitar; se o navegador não engolir, cai no padrão
+    try { this.ctx = new AC({ latencyHint: 0 }); }
+    catch (e) { this.ctx = new AC({ latencyHint: 'interactive' }); }
+    this.buildGraph();
+  };
 
+  /* monta o grafo em cima do this.ctx atual (separado porque a captura nativa
+     precisa recriar o contexto na taxa dela, 48kHz, e remontar tudo igual) */
+  AudioEngine.prototype.buildGraph = function () {
     this.analyser = this.ctx.createAnalyser();
-    this.analyser.fftSize = 2048;
-    this.analyser.smoothingTimeConstant = 0.55; // menos média entre frames = resposta mais na hora
+    // janela menor = menos atraso entre tocar e desenhar (2048 @48k = 42ms; 1024 = 21ms)
+    this.analyser.fftSize = 1024;
+    this.analyser.smoothingTimeConstant = 0; // zero média entre frames: o mais imediato possível
 
-    this.anL = this.ctx.createAnalyser(); this.anL.fftSize = 2048;
-    this.anR = this.ctx.createAnalyser(); this.anR.fftSize = 2048;
+    this.anL = this.ctx.createAnalyser(); this.anL.fftSize = 1024;
+    this.anR = this.ctx.createAnalyser(); this.anR.fftSize = 1024;
     this.anL.smoothingTimeConstant = 0; this.anR.smoothingTimeConstant = 0;
 
     this.splitter = this.ctx.createChannelSplitter(2);
@@ -54,8 +62,25 @@
     this.splitter.connect(this.anR, 1);
 
     this.input = this.ctx.createGain(); // tudo entra aqui
-    this.input.connect(this.analyser);
-    this.input.connect(this.splitter);
+    // preserva os 2 canais até o splitter (senão a Web Audio soma tudo e vira mono).
+    // try/catch porque nem todo backend aceita: se recusar, segue no padrão em vez de quebrar.
+    try {
+      this.input.channelCount = 2;
+      this.input.channelCountMode = 'explicit';
+      this.input.channelInterpretation = 'discrete';
+    } catch (e) {}
+    // ganho de análise: o loopback do sistema chega mais baixo que apps nativos (tipo MiniMeters).
+    // esse ganho sobe só o que os medidores/visuais enxergam, sem mexer no monitor nem na gravação.
+    this.analysisGain = this.ctx.createGain();
+    this.analysisGain.gain.value = 1.8;
+    try {
+      this.analysisGain.channelCount = 2;
+      this.analysisGain.channelCountMode = 'explicit';
+      this.analysisGain.channelInterpretation = 'discrete';
+    } catch (e) {}
+    this.input.connect(this.analysisGain);
+    this.analysisGain.connect(this.analyser);
+    this.analysisGain.connect(this.splitter);
 
     // monitor: liga o som nas caixas pra demo/arquivo, desliga pra entrada (evita eco)
     this.monitor = this.ctx.createGain();
@@ -70,6 +95,50 @@
     this.time = new Float32Array(this.analyser.fftSize);
     this.timeL = new Float32Array(this.anL.fftSize);
     this.timeR = new Float32Array(this.anR.fftSize);
+
+    this.setupWorklet();
+  };
+
+  /* Medidor de nível no AudioWorklet: lê as amostras na hora que chegam (blocos de 128),
+     sem esperar a janela da FFT. É o que faz o nível e o beat responderem em tempo real. */
+  AudioEngine.prototype.setupWorklet = function () {
+    if (this._workletTried || !this.ctx.audioWorklet) return;
+    this._workletTried = true;
+    var self = this;
+    var code = [
+      'class LvlProc extends AudioWorkletProcessor {',
+      '  constructor(){ super(); this.acc = 0; this.n = 0; this.pk = 0; }',
+      '  process(inputs){',
+      '    const inp = inputs[0];',
+      '    if (inp && inp.length) {',
+      '      const ch = inp[0], L = ch ? ch.length : 0;',
+      '      for (let i = 0; i < L; i++) {',
+      '        const v = ch[i], a = v < 0 ? -v : v;',
+      '        this.acc += v * v; this.n++;',
+      '        if (a > this.pk) this.pk = a;',
+      '      }',
+      '      if (this.n >= 128) {',
+      '        this.port.postMessage({ r: Math.sqrt(this.acc / this.n), p: this.pk });',
+      '        this.acc = 0; this.n = 0; this.pk = 0;',
+      '      }',
+      '    }',
+      '    return true;',
+      '  }',
+      '}',
+      'registerProcessor("cv-lvl", LvlProc);'
+    ].join('\n');
+    var url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+    this.ctx.audioWorklet.addModule(url).then(function () {
+      URL.revokeObjectURL(url);
+      var node = new AudioWorkletNode(self.ctx, 'cv-lvl');
+      node.port.onmessage = function (e) {
+        self.liveRms = e.data.r;
+        self.livePeak = e.data.p;
+        self._liveAt = performance.now();
+      };
+      self.analysisGain.connect(node);
+      self.workletNode = node;
+    }).catch(function () { /* sem worklet: cai pro cálculo por frame, só um tico mais lento */ });
   };
 
   AudioEngine.prototype.stopSource = function () {
@@ -77,6 +146,11 @@
     this.demoNodes.forEach(function (n) { try { n.stop ? n.stop() : 0; } catch (e) {} try { n.disconnect(); } catch (e) {} });
     this.demoNodes = [];
     if (this.source) { try { this.source.disconnect(); } catch (e) {} this.source = null; }
+    if (this.srcNode) { try { this.srcNode.disconnect(); } catch (e) {} this.srcNode = null; }
+    if (this.nativeOn && window.caramujo && window.caramujo.nativeStop) {
+      this.nativeOn = false;
+      try { window.caramujo.nativeStop(); } catch (e) {}
+    }
     if (this.stream) { this.stream.getTracks().forEach(function (t) { t.stop(); }); this.stream = null; }
     if (this.fileEl) { this.fileEl.pause(); this.fileEl = null; }
     this.sourceKind = 'none';
@@ -214,12 +288,21 @@
       return Promise.reject(new Error('sem-loopback-nativo'));
     }
     return window.caramujo.enableLoopback().then(function () {
+      // audio: true e nada mais. Constraint exigente aqui faz o backend REJEITAR a captura inteira
+      // (foi o que quebrou o áudio numa rodada). O estéreo a gente tenta depois, sem risco.
       return navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     }).then(function (stream) {
       // o getDisplayMedia exige pedir vídeo; a gente descarta e fica só com o áudio
       stream.getVideoTracks().forEach(function (tk) { try { tk.stop(); } catch (e) {} stream.removeTrack(tk); });
       return Promise.resolve(window.caramujo.disableLoopback()).catch(function () {}).then(function () {
-        if (!stream.getAudioTracks().length) throw new Error('loopback-sem-audio');
+        var tracks = stream.getAudioTracks();
+        if (!tracks.length) throw new Error('loopback-sem-audio');
+        // tentativa de estéreo DEPOIS que a trilha existe: se falhar, não derruba a captura
+        try {
+          if (tracks[0].applyConstraints) {
+            tracks[0].applyConstraints({ channelCount: 2 }).catch(function () {});
+          }
+        } catch (e) {}
         self.stopSource();
         self.stream = stream;
         self.source = self.ctx.createMediaStreamSource(stream);
@@ -233,6 +316,98 @@
       try { window.caramujo.disableLoopback(); } catch (e) {}
       throw err;
     });
+  };
+
+  /* ---------- CAPTURA NATIVA (ESTÉREO de verdade, sem driver externo) ----------
+     O processo principal capta pelo ScreenCaptureKit e manda PCM 16-bit intercalado.
+     Aqui a gente desintercala em L/R e injeta no grafo por um worklet-fonte, então
+     todo o resto do app (espectro, espaço estéreo, gravação) funciona igual. */
+  AudioEngine.prototype.startNativeCapture = function () {
+    var self = this;
+    if (!(window.caramujo && window.caramujo.nativeStart)) {
+      return Promise.reject(new Error('sem-ponte-nativa'));
+    }
+    return Promise.resolve(window.caramujo.nativeAvailable()).then(function (ok) {
+      if (!ok) throw new Error('modulo-nativo-nao-instalado');
+      return window.caramujo.nativeStart();
+    }).then(function (info) {
+      var rate = (info && info.sampleRate) || 48000;
+      self.ensureCtxAtRate(rate);
+      self.stopSource();
+      return self.makeSrcNode().then(function (node) {
+        self.srcNode = node;
+        node.connect(self.input);
+        self.monitor.gain.value = 0; // já sai nas caixas
+        self.sourceKind = 'system';
+        self.sourceLabel = (info && info.name) || 'ÁUDIO DO COMPUTADOR';
+        self.nativeChannels = (info && info.channels) || 2;
+        self.nativeOn = true;
+        if (!self._nativeWired) {
+          self._nativeWired = true;
+          window.caramujo.onNativeAudio(function (buf) { self.pushNativePCM(buf); });
+          if (window.caramujo.onNativeError) window.caramujo.onNativeError(function () {});
+        }
+        return 'native';
+      });
+    });
+  };
+
+  // o contexto precisa rodar na mesma taxa do áudio nativo, senão o som "desafina" no tempo
+  AudioEngine.prototype.ensureCtxAtRate = function (rate) {
+    if (this.ctx && Math.abs(this.ctx.sampleRate - rate) < 1) { this.ensureCtx(); return; }
+    if (this.ctx) { try { this.ctx.close(); } catch (e) {} this.ctx = null; this._workletTried = false; this.srcNode = null; }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    try { this.ctx = new AC({ latencyHint: 0, sampleRate: rate }); }
+    catch (e) { try { this.ctx = new AC({ sampleRate: rate }); } catch (e2) { this.ctx = new AC(); } }
+    this.buildGraph();
+  };
+
+  // worklet-fonte: guarda os pedaços que chegam e entrega amostra por amostra pro grafo
+  AudioEngine.prototype.makeSrcNode = function () {
+    var self = this;
+    if (!this.ctx.audioWorklet) return Promise.reject(new Error('sem-audioworklet'));
+    var code = [
+      'class SrcProc extends AudioWorkletProcessor {',
+      '  constructor(){ super(); this.q = []; this.cur = null; this.pos = 0;',
+      // fila curta = menos delay. Se acumular (a captura vem mais rápido que o consumo),
+      // joga fora o mais VELHO: melhor um micro-salto do que visual atrasado.
+      '    this.port.onmessage = (e) => { this.q.push(e.data); while (this.q.length > 3) this.q.shift(); };',
+      '  }',
+      '  process(_, outputs){',
+      '    const out = outputs[0]; if (!out || !out.length) return true;',
+      '    const L = out[0], R = out.length > 1 ? out[1] : null, n = L.length;',
+      '    for (let i = 0; i < n; i++) {',
+      '      if (!this.cur || this.pos >= this.cur.l.length) { this.cur = this.q.shift() || null; this.pos = 0; }',
+      '      if (!this.cur) { L[i] = 0; if (R) R[i] = 0; continue; }',
+      '      L[i] = this.cur.l[this.pos]; if (R) R[i] = this.cur.r[this.pos];',
+      '      this.pos++;',
+      '    }',
+      '    return true;',
+      '  }',
+      '}',
+      'registerProcessor("cv-src", SrcProc);'
+    ].join('\n');
+    var url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+    return this.ctx.audioWorklet.addModule(url).then(function () {
+      URL.revokeObjectURL(url);
+      return new AudioWorkletNode(self.ctx, 'cv-src', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+    });
+  };
+
+  // PCM 16-bit intercalado (L,R,L,R...) → dois Float32 separados
+  AudioEngine.prototype.pushNativePCM = function (buf) {
+    if (!this.srcNode || !buf) return;
+    var u8 = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf.buffer || buf);
+    var i16 = new Int16Array(u8.buffer, u8.byteOffset, Math.floor(u8.byteLength / 2));
+    var ch = this.nativeChannels || 2;
+    var frames = Math.floor(i16.length / ch);
+    if (frames <= 0) return;
+    var l = new Float32Array(frames), r = new Float32Array(frames);
+    for (var i = 0; i < frames; i++) {
+      l[i] = i16[i * ch] / 32768;
+      r[i] = ch > 1 ? i16[i * ch + 1] / 32768 : l[i];
+    }
+    try { this.srcNode.port.postMessage({ l: l, r: r }, [l.buffer, r.buffer]); } catch (e) {}
   };
 
   /* ---------- ENTRADA (BlackHole / mic) — plano B ---------- */
@@ -310,9 +485,14 @@
     var t = this.time, rms = 0, peak = 0, a;
     for (i = 0; i < t.length; i++) { a = Math.abs(t[i]); rms += a * a; if (a > peak) peak = a; }
     rms = Math.sqrt(rms / t.length);
+    // se o worklet está vivo, o nível vem dele: chega antes da janela da FFT (menos delay)
+    if (this.liveRms !== undefined && (performance.now() - this._liveAt) < 120) {
+      rms = this.liveRms;
+      if (this.livePeak > peak) peak = this.livePeak;
+    }
     this.rms = rms; this.peak = peak;
     this._peakHold = Math.max(peak, this._peakHold - dt * 0.3);
-    this.level += (rms - this.level) * (rms > this.level ? 0.8 : k);
+    this.level += (rms - this.level) * (rms > this.level ? 0.92 : k);
 
     // média de sessão (ignora silêncio)
     if (rms > 0.001) {
@@ -327,7 +507,7 @@
     this._beatCool -= dt;
     this.beat = false;
     if (bass > 0.12 && bass > avg * 1.45 && this._beatCool <= 0) {
-      this.beat = true; this.beatPulse = 1; this._beatCool = 0.18;
+      this.beat = true; this.beatPulse = 1; this._beatCool = 0.12;
     }
     this.beatPulse = Math.max(0, this.beatPulse - dt * 3.2);
   };

@@ -1,97 +1,131 @@
 # Caramujo Vision
 
-Visualizador de áudio em tempo real do rideblan / Caramujo Records. Vários módulos na mesma tela (layout inspirado no MiniMeters), estética moldada no Exo Audio Form Vision: preto quase puro, monocromia delicada, linha fina, bloom suave. Escuta qualquer som do computador: FL Studio, YouTube, player, tudo.
+Visualizador de áudio em tempo real pra macOS. Ele escuta o som que sai do seu computador (FL Studio, YouTube, Spotify, qualquer coisa) e desenha na tela: medidores de estúdio de um lado, arte que reage à música do outro.
 
-## Rodar como programa de computador
+Serve pra duas coisas ao mesmo tempo. Mixar e masterizar olhando espectro, LUFS e imagem estéreo. E gerar visual pra clipe, Reels e story, gravando qualquer painel em vídeo com o áudio junto.
 
-Uma vez (peça pro Claude Code rodar na pasta do projeto):
+Feito pelo rideblan / Caramujo Records.
+
+---
+
+## Instalar
+
+Abra o `Caramujo Vision.dmg`, arraste o app pra pasta **Aplicativos** e abra pelo Launchpad.
+
+Na primeira vez o macOS pede duas coisas:
+
+1. **Permitir abrir o app.** Clique com o botão direito no ícone → **Abrir** → **Abrir**. Só na primeira vez.
+2. **Permissão de gravação de tela.** É o que libera a captura do som do sistema. Autorize e abra o app de novo.
+
+Pronto. Não precisa de driver, nem de configuração de áudio, nem de terminal.
+
+---
+
+## Como usar
+
+Toque um som qualquer no computador. Os visuais reagem na hora.
+
+- **Menu**: leve o mouse ao topo da tela. Aparece a aba **☰ MENU**; clique nela pra abrir a barra, clique fora pra fechar (a tecla `H` também abre).
+- **Ajuda**: o **?** no canto superior direito tem o resumo de uso, o estado do áudio, a troca de entrada e o contato.
+- **Começar rápido**: no menu, abra **TEMPLATES** e escolha um pronto. É o caminho mais fácil.
+- **Ajustar um visual**: passe o mouse no painel e clique no **⚙**. Os controles abrem numa faixa embaixo, sem cobrir nada.
+- **Mudar o tamanho**: arraste as bordas do painel. Só a borda que você puxa se move; o vizinho cede o espaço.
+- **Trocar de lugar**: arraste o painel pela alça **⠿**.
+- **Mover a janela**: arraste pela alça **✥**.
+
+## O menu
+
+| Comando | O que faz |
+| --- | --- |
+| **TEMPLATES** | Combinações prontas de visuais, cores e formato. `⭑` salva a sua, `🗑` apaga. |
+| **POSIÇÃO** | Onde a janela fica e como os visuais se arrumam: tela normal, ou grudada no topo, rodapé, esquerda ou direita da tela. |
+| **TEMA** | 14 temas. Cada um muda fundo, texto, grade e cor dos traços: PRETO, PAPEL e GELO (claros), ARDÓSIA, NEON, VHS, OCEANO e mais. |
+| **+ VISUAL** | Adiciona mais um módulo à tela. |
+| **📌** | Mantém o app na frente das outras janelas. |
+| **⛶** | Tela cheia. |
+
+## Templates prontos
+
+Escolher um template ajusta tudo junto: visuais, tema e até onde a janela fica.
+
+**Estúdio** — `01 mixagem` (preto, leitura seca), `02 master` (papel, LUFS grande), `03 grave` (ardósia, foco no sub), `11 válvula` (âmbar).
+
+**Visual e clipe** — `04 clipe vertical` (proporção de Reels), `05 show` (neon), `06 ambiente` (floresta), `08 rua` (VHS), `09 submerso` (oceano), `10 brasa` (rubi), `12 neve` (gelo), `13 deserto` (areia), `14 sonho` (lavanda).
+
+**Misto** — `07 produção` (poente, metade e metade).
+
+**Encaixados na tela** — `15 régua no rodapé`, `16 faixa no topo`, `17 coluna à direita`, `18 torre à esquerda`.
+
+**Do zero** — `19 tela limpa`.
+
+O `⭑` salva a sua montagem com um nome e ela entra na lista.
+
+## Os visuais
+
+**Estúdio (6).** Espectro (grade de Hz, leitura de dB/nota no hover), Onda rolante, Loudness (LUFS), Espaço estéreo, Osciloscópio, Espectrograma.
+
+**Arte (10).** PSY (líquido psicodélico), Aurora, Campo de fluxo, Enxame, Fita, Traço, Ondas em camadas, Lissajous, Cordas, Malha.
+
+Todos seguem a mesma regra: o áudio é quem manda. No silêncio a tela para e apaga.
+
+## Gravar vídeo
+
+O botão **●** na barra do painel grava aquele visual em `.webm`, com o áudio junto. Ajuste o painel na proporção que você quer (vertical pra Reels, quadrado pra feed) antes de gravar.
+
+## Atalhos
+
+| Tecla | Ação |
+| --- | --- |
+| `H` | Abre e fecha o menu |
+| `⌘Q` | Fecha o programa |
+
+---
+
+## Rodar a partir do código
+
+Precisa do [Node.js](https://nodejs.org).
 
 ```
 npm install
-```
-
-Depois, sempre que quiser abrir:
-
-```
 npm start
 ```
 
-Abre a janela do Caramujo Vision (sem moldura, direto nos visuais), com o ícone do caramujo. Pra gerar o instalador .dmg de verdade:
+Empacotar o instalador:
 
 ```
 npm run dist
 ```
 
-O instalador sai na pasta `dist/`.
+Sai um `.dmg` na pasta `dist/`, pronto pra distribuir.
 
-## Rodar no navegador
+### Captura em estéreo
 
-Dois cliques no `index.html` (Chrome) também funcionam. Clique na tela pra começar.
+O app capta em estéreo por um módulo nativo. Se ele não estiver disponível, cai sozinho num modo mono e continua funcionando. Pra instalar o módulo a partir do código:
 
-## Fonte de áudio
+```
+xcode-select --install
+brew install cmake
+npm install -g cmake-js
+npm run audio-nativo
+npm run audio-nativo-check
+```
 
-Uma fonte só: **o áudio do computador**. Ele capta tudo que sai das caixas (FL Studio, YouTube, Spotify, o que for) direto, **sem driver nenhum** e sem passar pelo microfone. Na primeira vez o Mac pode pedir a permissão de gravação de tela (é só liberar; serve pra pegar o som do sistema, não pra gravar a tela). Se a captura nativa não pegar, ele cai sozinho pro BlackHole (passo a passo no `?`). O seletor da barra ainda deixa escolher um dispositivo de entrada específico, se você quiser.
+O status no canto inferior esquerdo mostra **ESTÉREO NATIVO** quando está ativo.
 
-Regra de ouro dos visuais: o áudio é quem molda. Silêncio = tela parada e apagada; grave e beat empurram o relógio interno de cada módulo.
-
-## Módulos (20)
-
-Estúdio: Espectro (grade de Hz por décadas, curva principal preenchida + curva secundária, nivelamento de volume, hover com dB/Hz/nota+cents), Onda rolante (waveform cheia rolando, cor do grave pro agudo conforme o conteúdo), Loudness (LUFS, média da sessão e alvo), Espaço estéreo (nuvem orgânica com névoa e barra de largura), Osciloscópio (verde fósforo ou branco, até 3 camadas), Espectrograma (hover com frequência).
-
-Arte: PSY (líquido psicodélico), Túnel, Lissajous, Fita, Traço (linha viva), Campo de fluxo (pó de partículas), ASCII (símbolos configuráveis, escreva o que quiser), Ondas em camadas, Terreno (as ondas viram montanhas em perspectiva 3D, o grave levanta o relevo), Harmonógrafo (pêndulos desenhando teias finas que se acumulam), Enxame (bando de pontos: o beat espanta, a música reagrupa), Aurora (cortinas de luz verticais dobrando, irmã calma do PSY), Órbita (partículas gravitando um sol que pulsa no grave, rastros longos), Maré (ondas de várias fontes se cruzando, interferência por banda).
-
-Todos reagem ao mouse: estúdio informa, arte segue o cursor.
-
-## Controles
-
-O programa abre no modo visual: só os gráficos. **O menu do topo aparece quando o mouse encosta no topo da tela** (ou aperte `H` pra fixar). Os botões de **minimizar (–)** e **fechar (⏻)** ficam sempre no canto superior direito, independente do menu. A janela não tem moldura: arrasta ela pela barra do topo (⌘Q também fecha).
-
-- Passe o mouse num painel: `⚙` (em destaque) abre a **gaveta de ajustes** na lateral, `●` grava vídeo, `✕` fecha o painel. A gaveta tem um **✕ FECHAR** claro no topo.
-- **Redimensionar**: arraste as bordas do painel, em passos finos (dá pra ajustar quase pixel a pixel). Na grade, a borda direita muda a largura, a de baixo a altura e o canto os dois. Na LINHA você só mexe na largura; na COLUNA só na altura.
-- **Trocar de lugar**: arraste o painel **por qualquer ponto dele** e solte perto de outro. Uma linha marca onde ele vai entrar (como mover uma linha de planilha). Segurar numa borda redimensiona em vez de arrastar.
-- `+ MÓDULO` adiciona qualquer módulo, quantas vezes quiser.
-- **LAYOUT**: GRADE (padrão), LINHA → (tudo numa fila horizontal) ou COLUNA ↓ (tudo empilhado). Estica a janela como quiser: os visuais escalam junto.
-- **Tela cheia** de um módulo: deixe só ele na tela (dica: template **vazio** + esse módulo) e dê `⛶` no topo.
-- Temas: EXO (mono estilo Form Vision), PSY, NEON, VHS, POENTE, GELO, OCEANO, FLORESTA, VAPORWAVE, RUBI, ÂMBAR.
-- Cor e **tema por módulo**: na gaveta de cada módulo dá pra escolher um tema próprio (ou seguir o global) e cor própria. Dá pra **mesclar temas** na mesma tela.
-- Layout e ajustes ficam salvos sozinhos. `⏻` fecha o app.
-
-## Templates
-
-Personalizou os gráficos, o layout e o tamanho da janela do jeito que gosta? Salva num template e volta pra ele com um clique.
-
-- `⭑` salva a personalização atual (visuais, ajustes de cada um, tema, layout e tamanho da janela) com um nome.
-- O seletor de **templates** carrega qualquer um salvo.
-- `🗑` apaga o template selecionado.
-
-Vem com dois prontos: **padrão** (os 20 módulos na tela) e **vazio** (tela limpa pra montar do zero). As variações de cor ficam nos **temas** (seletor ao lado), não como templates.
-
-Cada módulo tem ajustes próprios que fazem sentido pra ele (a `⚙` abre a gaveta): o espectro tem grade de Hz e cores das duas curvas, a onda rolante tem cor do grave/agudo e rolagem, a órbita tem gravidade do sol, a aurora tem dobra e número de cortinas, a maré tem ondulação, e assim por diante.
-
-## Gravar vídeo
-
-O `●` grava aquele painel com o áudio junto, em `.webm`. Estica o painel na proporção do destino (Reels, YouTube) antes de gravar, ou usa tela cheia. Pra converter pra mp4: peça pro Claude Code.
-
-## Teste
+### Testes
 
 ```
 npm test
 ```
 
-Roda os 16 módulos com áudio falso e acusa erro de código. Sem dependência externa.
-
 ## Estrutura
 
 ```
-index.html        página única do app
-css/style.css     interface
-js/audio.js       captura e análise de áudio
-js/modules.js     os 16 módulos visuais
-js/app.js         grade, gaveta de ajustes, temas, gravação, fontes
-electron/main.js  janela do programa (sem moldura, loopback de áudio, controles)
-electron/preload.js  ponte segura tela↔sistema (loopback + janela)
-test/smoke.js     teste de fumaça
-DESIGN.md         identidade visual (norte: Exo Form Vision)
-docs/contexto-continuidade.md  contexto pra retomar o projeto em outro chat
-assets/logo.png   logo espiral · build/icon.png ícone do app
+index.html            página única
+css/style.css         interface
+js/audio.js           captura e análise de áudio
+js/modules.js         os 16 visuais
+js/app.js             grade, ajustes, temas, templates, gravação
+electron/main.js      janela e captura nativa
+DESIGN.md             identidade visual
 ```
