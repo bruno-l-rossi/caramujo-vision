@@ -14,45 +14,53 @@
   /* ---------- paletas ---------- */
   // cada tema com 4 cores bem espalhadas (variedade dentro) e assinatura própria (distinção entre eles)
   var PALETTES = {
-    // ---- FUNDO ESCURO: traço claro e saturado ----
-    preto:    [[0, 0, 100], [0, 0, 74], [0, 0, 50], [0, 0, 88]],
-    neon:     [[318, 100, 62], [186, 100, 56], [268, 100, 70], [92, 100, 58]],
-    vhs:      [[2, 94, 56], [26, 100, 52], [44, 96, 54], [340, 86, 56]],
-    oceano:   [[196, 100, 56], [172, 96, 46], [222, 92, 62], [148, 84, 48]],
-    floresta: [[132, 78, 50], [88, 70, 46], [162, 82, 42], [52, 74, 52]],
-    rubi:     [[350, 96, 56], [8, 100, 50], [326, 86, 50], [22, 94, 54]],
-    ambar:    [[42, 100, 60], [26, 100, 52], [52, 100, 64], [12, 92, 52]],
-    poente:   [[14, 100, 62], [336, 88, 62], [286, 76, 62], [40, 100, 58]],
-    // ---- FUNDO CLARO: traço ESCURO, senão some no fundo ----
+    // ---- ESCUROS ----
+    preto:    [[0, 0, 100], [0, 0, 74], [0, 0, 50], [0, 0, 88]],           // branco puro, sem cor
+    neon:     [[318, 100, 62], [186, 100, 56], [268, 100, 70], [92, 100, 58]], // 4 cores berrantes e distantes
+    vhs:      [[6, 88, 48], [30, 92, 46], [16, 70, 34], [44, 78, 44]],     // quente, sujo, pouca luz e pouca variação
+    oceano:   [[192, 100, 62], [176, 100, 46], [214, 100, 40], [160, 90, 70]], // azul com faixa larga de luz
+    floresta: [[128, 46, 40], [96, 34, 32], [154, 40, 30], [78, 30, 44]],  // verdes dessaturados e fechados
+    rubi:     [[352, 100, 58], [0, 0, 96], [346, 90, 34], [12, 100, 50]],  // vermelho + um branco de contraste
+    ambar:    [[40, 100, 66], [30, 100, 54], [48, 96, 78], [22, 88, 42]],  // dourado com muita variação de luz
+    poente:   [[10, 100, 66], [330, 92, 70], [278, 84, 68], [46, 100, 66]], // pastel quente, luz alta
+    psy:      [[0, 0, 100], [0, 0, 70], [0, 0, 45], [0, 0, 85]],           // (a matiz gira em CV.pal)
+    // ---- CLAROS: traço ESCURO, senão some no fundo ----
     papel:    [[0, 0, 8], [0, 0, 26], [0, 0, 42], [0, 0, 16]],
-    gelo:     [[212, 92, 26], [192, 96, 22], [242, 72, 34], [172, 88, 22]],
-    areia:    [[18, 88, 30], [2, 82, 34], [34, 92, 28], [354, 70, 26]],
-    // ---- FUNDO MÉDIO: traço quente e claro ----
-    ardosia:  [[44, 68, 78], [12, 74, 64], [172, 34, 74], [30, 62, 72]],
-    lavanda:  [[268, 46, 22], [318, 42, 30], [230, 52, 28], [286, 38, 18]]
+    gelo:     [[214, 100, 22], [196, 100, 30], [246, 62, 40], [178, 96, 18]],
+    areia:    [[16, 92, 26], [0, 78, 32], [32, 100, 22], [350, 62, 20]],
+    lavanda:  [[272, 54, 26], [316, 48, 36], [226, 60, 30], [290, 40, 16]],
+    // ---- MÉDIO ----
+    ardosia:  [[44, 68, 78], [12, 74, 64], [172, 34, 74], [30, 62, 72]]
   };
+
 
 
   /* fundo por tema: contraste e temperatura mudam junto com a paleta.
      bg = fundo do painel, ink = quanto a cor "pega" na tela (grade, textos). */
   var THEME_BG = {
-    // cada tema é um lugar: fundo, texto, grade e traço combinam entre si.
-    // light: true avisa os módulos que o fundo é claro (traço escurece, mistura multiplica).
+    /* Cada tema muda quatro coisas, não só a cor: quão escuro é o fundo, quanto
+       o painel se destaca do fundo, quão forte é a grade, e a paleta do traço.
+       É isso que faz VHS parecer fita velha e OCEANO parecer água funda. */
+    // --- muito escuros, grade quase invisível: o traço domina ---
     preto:    { bg: '#050506', panel: '#08080a', grid: 0.06, text: '#8b8b91', ink: '#f0efe9' },
-    papel:    { bg: '#e9e7e0', panel: '#f4f2ec', grid: 0.42, text: '#55554e', ink: '#121210', light: 1 },
+    rubi:     { bg: '#0b0104', panel: '#150309', grid: 0.05, text: '#a85c72', ink: '#ffd9e2' },
+    floresta: { bg: '#040d08', panel: '#07150d', grid: 0.05, text: '#5f8a6d', ink: '#cfe8d6' },
+    psy:      { bg: '#07030d', panel: '#0c0616', grid: 0.07, text: '#9a7fbd', ink: '#f6e9ff' },
+    // --- escuros com painel destacado e grade forte: cara de instrumento ---
+    neon:     { bg: '#04030e', panel: '#0a0820', grid: 0.14, text: '#8a86c9', ink: '#f0e9ff' },
+    oceano:   { bg: '#02101c', panel: '#082438', grid: 0.16, text: '#74b4d6', ink: '#e0f4ff' },
+    // --- médios quentes, bem levantados do preto ---
+    vhs:      { bg: '#2a1109', panel: '#37180d', grid: 0.2, text: '#d99a75', ink: '#ffd0ac' },
+    ambar:    { bg: '#241704', panel: '#312007', grid: 0.18, text: '#d4a860', ink: '#ffeec2' },
+    poente:   { bg: '#3a1d2c', panel: '#4a2839', grid: 0.22, text: '#e8a9b8', ink: '#fff0e6' },
     ardosia:  { bg: '#374545', panel: '#3e4e4e', grid: 0.18, text: '#c2ccc8', ink: '#f6ecc9' },
-    neon:     { bg: '#04030e', panel: '#070618', grid: 0.1, text: '#8a86c9', ink: '#f0e9ff' },
-    vhs:      { bg: '#1c0a06', panel: '#240e08', grid: 0.13, text: '#cf8a6c', ink: '#ffd6bb' },
-    gelo:     { bg: '#dbe7ee', panel: '#e8f1f6', grid: 0.34, text: '#4a6270', ink: '#0d2733', light: 1 },
-    areia:    { bg: '#e0d3bc', panel: '#ebe0cd', grid: 0.36, text: '#6b5a44', ink: '#241a10', light: 1 },
-    oceano:   { bg: '#03121f', panel: '#051a2b', grid: 0.13, text: '#6fa2c4', ink: '#e0f4ff' },
-    floresta: { bg: '#08170e', panel: '#0b1f14', grid: 0.11, text: '#79a888', ink: '#e2ffe8' },
-    rubi:     { bg: '#19040a', panel: '#210610', grid: 0.11, text: '#c2758a', ink: '#ffdfe6' },
-    ambar:    { bg: '#191004', panel: '#221607', grid: 0.12, text: '#c9a065', ink: '#ffecc2' },
-    poente:   { bg: '#25101a', panel: '#2e1522', grid: 0.13, text: '#d18f9e', ink: '#ffe2d6' },
-    lavanda:  { bg: '#cfc6e2', panel: '#ded7ec', grid: 0.34, text: '#5d5473', ink: '#1d1630', light: 1 },
-    psy:      { bg: '#0a0412', panel: '#0e0619', grid: 0.09, text: '#a184c4', ink: '#f6e9ff' }
+    // --- claros, em três níveis de luz ---
+    papel:    { bg: '#e9e7e0', panel: '#f4f2ec', grid: 0.42, text: '#55554e', ink: '#121210', light: 1 },
+    gelo:     { bg: '#dbe7ee', panel: '#eef5f9', grid: 0.3, text: '#4a6270', ink: '#0d2733', light: 1 },
+    areia:    { bg: '#d6c5a8', panel: '#e4d7c0', grid: 0.4, text: '#6b5a44', ink: '#241a10', light: 1 },
+    lavanda:  { bg: '#b9aed2', panel: '#cdc4e0', grid: 0.38, text: '#4c4363', ink: '#1d1630', light: 1 }
   };
+
 
   CV.themeBg = function (th) { return THEME_BG[th] || THEME_BG.preto; };
   // fundo do painel do módulo (respeita tema próprio do módulo)

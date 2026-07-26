@@ -131,19 +131,26 @@
         var ix = panels.indexOf(p), nb = panels[ix + 1] || null;
         var nbw0 = nb ? nb.gw : 0, nbh0 = nb ? nb.gh : 0;
         var MINU = 8;
-        // na GRADE, pega TODOS que encostam na borda arrastada (pode ser mais de um).
-        // Todos cedem/ganham juntos, senão um painel entraria por cima do outro.
-        var nbRs = [], nbBs = [];
-        panels.forEach(function (o) {
-          if (o === p) return;
-          var rowsTouch = (o.gy < p.gy + p.gh) && (p.gy < o.gy + o.gh);
-          var colsTouch = (o.gx < p.gx + p.gw) && (p.gx < o.gx + o.gw);
-          if (rowsTouch && o.gx === p.gx + p.gw) nbRs.push({ o: o, w0: o.gw });
-          if (colsTouch && o.gy === p.gy + p.gh) nbBs.push({ o: o, h0: o.gh });
+        /* GRADE: foto de todo mundo no começo do arrasto. A cada movimento a gente
+           recalcula a partir dela, então cruzar uma fronteira nova no meio do caminho
+           não acumula erro nem deixa painel por cima de painel. */
+        var snap = panels.map(function (o) { return { o: o, gx: o.gx, gy: o.gy, gw: o.gw, gh: o.gh }; });
+        var right0 = p.gx + gw0, bottom0 = p.gy + gh0;
+        var nbRs = [], nbBs = [], barrierW = GW_MAX - right0, barrierH = GH_MAX - bottom0;
+        snap.forEach(function (n) {
+          if (n.o === p) return;
+          var rowsTouch = (n.gy < p.gy + gh0) && (p.gy < n.gy + n.gh);
+          var colsTouch = (n.gx < p.gx + gw0) && (p.gx < n.gx + n.gw);
+          if (rowsTouch && n.gx === right0) nbRs.push(n);                       // encosta: cede espaço
+          else if (rowsTouch && n.gx > right0) barrierW = Math.min(barrierW, n.gx - right0); // à frente: barreira
+          if (colsTouch && n.gy === bottom0) nbBs.push(n);
+          else if (colsTouch && n.gy > bottom0) barrierH = Math.min(barrierH, n.gy - bottom0);
         });
-        // o limite é o vizinho mais apertado da fronteira
-        var maxGrowW = nbRs.length ? Math.min.apply(null, nbRs.map(function (n) { return n.w0 - MINU; })) : (GW_MAX - p.gx - gw0);
-        var maxGrowH = nbBs.length ? Math.min.apply(null, nbBs.map(function (n) { return n.h0 - MINU; })) : (GH_MAX - gh0);
+        // cresce até o vizinho mais apertado da fronteira, ou até a barreira mais próxima
+        var maxGrowW = nbRs.length ? Math.min.apply(null, nbRs.map(function (n) { return n.gw - MINU; })) : barrierW;
+        var maxGrowH = nbBs.length ? Math.min.apply(null, nbBs.map(function (n) { return n.gh - MINU; })) : barrierH;
+        maxGrowW = Math.min(maxGrowW, barrierW);
+        maxGrowH = Math.min(maxGrowH, barrierH);
         document.body.classList.add('resizing'); el.classList.add('rzing');
         function mv(e) {
           if (layout === 'row') {
@@ -171,23 +178,27 @@
           } else {
             // GRADE: mover a fronteira mexe NOS DOIS painéis que se encostam nela.
             // O que cresce empurra o vizinho da direita/de baixo; o lado oposto não sai do lugar.
+            // parte SEMPRE da foto inicial: o resultado depende só de onde o mouse está agora
+            snap.forEach(function (n) { n.o.gx = n.gx; n.o.gy = n.gy; n.o.gw = n.gw; n.o.gh = n.gh; });
             if (mode.indexOf('w') >= 0) {
               var dGW = Math.max(MINU - gw0, Math.min(maxGrowW, Math.round((e.clientX - sx) / colUnit)));
               p.gw = gw0 + dGW;
-              nbRs.forEach(function (n) { n.o.gw = n.w0 - dGW; n.o.gx = p.gx + p.gw; applySpan(n.o); });
+              nbRs.forEach(function (n) { n.o.gw = n.gw - dGW; n.o.gx = n.gx + dGW; });
             }
             if (mode.indexOf('h') >= 0) {
               var dGH = Math.max(MINU - gh0, Math.min(maxGrowH, Math.round((e.clientY - sy) / rowUnit)));
               p.gh = gh0 + dGH;
-              nbBs.forEach(function (n) { n.o.gh = n.h0 - dGH; n.o.gy = p.gy + p.gh; applySpan(n.o); });
+              nbBs.forEach(function (n) { n.o.gh = n.gh - dGH; n.o.gy = n.gy + dGH; });
             }
-            applySpan(p);
+            snap.forEach(function (n) { applySpan(n.o); });
           }
         }
         function up() {
           window.removeEventListener('mousemove', mv);
           window.removeEventListener('mouseup', up);
           document.body.classList.remove('resizing'); el.classList.remove('rzing');
+          // rede de segurança: sobrou alguém por cima de alguém? reorganiza a grade
+          if (layout === 'grid' && hasOverlap()) packLayout();
           save();
         }
         window.addEventListener('mousemove', mv);
@@ -228,6 +239,17 @@
     return p;
   }
 
+  // algum painel ficou por cima de outro? (usado como rede de segurança no fim do arrasto)
+  function hasOverlap() {
+    for (var i = 0; i < panels.length; i++) {
+      for (var j = i + 1; j < panels.length; j++) {
+        var a = panels[i], b = panels[j];
+        if (a.gx < b.gx + b.gw && b.gx < a.gx + a.gw &&
+            a.gy < b.gy + b.gh && b.gy < a.gy + a.gh) return true;
+      }
+    }
+    return false;
+  }
   function applySpan(p) {
     p.el.style.gridColumn = (p.gx + 1) + ' / span ' + p.gw;
     p.el.style.gridRow = (p.gy + 1) + ' / span ' + p.gh;
@@ -869,10 +891,8 @@
   function showHelp() {
     modal.classList.remove('hidden');
     if (elAudioStat) {
-      var kind = engine.sourceKind;
-      elAudioStat.textContent = kind === 'none' ? 'Sem áudio no momento.'
-        : (engine.nativeOn ? 'Captando em ESTÉREO (nativo) · ' : 'Captando em MONO (loopback do sistema) · ')
-          + (engine.sourceLabel || 'áudio do computador');
+      elAudioStat.textContent = engine.sourceKind === 'none' ? 'sem sinal'
+        : (engine.nativeOn ? 'estéreo' : 'mono');
     }
     // lista as entradas do sistema pra quem precisar trocar (interface, BlackHole…)
     if (elSrcPick && !elSrcPick.dataset.ready) {

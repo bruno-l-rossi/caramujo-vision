@@ -87,11 +87,16 @@ Quer: menos colorido, mais monocromático, mais impactante. Contraste alto, form
 
 Cada tema define fundo, cor de texto, força da grade e paleta de 4 cores. Trocar de tema muda o clima da tela inteira.
 
-**Fundo escuro:** PRETO (`#050506`, traço branco), NEON (`#04030e`, magenta/ciano), VHS (`#1c0a06`, vermelho de fita), OCEANO (`#03121f`), FLORESTA (`#08170e`), RUBI (`#19040a`), ÂMBAR (`#191004`), POENTE (`#25101a`), PSY (matiz girando).
+O que separa um tema do outro não é só a matiz. Cada um varia quatro eixos ao mesmo tempo: luminância do fundo, quanto o painel se destaca do fundo, força da grade e amplitude da paleta.
 
-**Fundo claro:** PAPEL (`#e9e7e0`, traço quase preto), GELO (`#dbe7ee`, azul profundo), AREIA (`#e0d3bc`, terroso), LAVANDA (`#cfc6e2`, roxo escuro).
+| Grupo | Temas | Fundo | Grade |
+| --- | --- | --- | --- |
+| Muito escuros, grade quase invisível | PRETO, RUBI, FLORESTA, PSY | luz 4–10 | 0.05–0.07 |
+| Escuros com painel destacado | NEON, OCEANO | luz 5–13 | 0.14–0.16 |
+| Médios quentes, levantados do preto | VHS, ÂMBAR, POENTE, ARDÓSIA | luz 24–65 | 0.18–0.22 |
+| Claros, em três níveis de luz | PAPEL, GELO, AREIA, LAVANDA | luz 181–231 | 0.30–0.42 |
 
-**Fundo médio:** ARDÓSIA (`#374545`, traço creme — o do MiniMeters).
+A paleta também varia de amplitude: RUBI tem um branco no meio dos vermelhos pra contraste, FLORESTA é dessaturada e fechada, ÂMBAR tem faixa larga de luz, VHS tem pouca variação de propósito (cara de fita velha).
 
 Detalhe técnico importante: em fundo claro os módulos **multiplicam** as camadas em vez de somar luz, e o glow é desligado. Somar luz em fundo claro só lava tudo até sumir.
 
@@ -167,10 +172,16 @@ estático de cada um em fundo preto com traço branco. Nada de arco-íris.
 
 B) PALETA E TEMAS
 Crie 4 temas completos com identidade autoral ligada à estética de rua e
-periférica do rap. Cada tema precisa de: cor de fundo (hex), cor de texto da
-interface, opacidade da grade, e 4 cores de traço. Pelo menos um de fundo
-claro. Mostre cada tema aplicado numa mesma tela de exemplo (uma curva de
-espectro + uma onda) pra dar pra comparar lado a lado.
+periférica do rap. Cada tema precisa de: cor de fundo (hex), cor do painel
+(hex, um pouco diferente do fundo), cor de texto da interface, opacidade da
+grade (0.05 a 0.45) e 4 cores de traço em HSL.
+IMPORTANTE: os temas têm que diferir em MAIS do que a matiz. Varie também a
+luminância do fundo (de quase preto a claro), o quanto o painel se destaca do
+fundo, a força da grade e a amplitude interna da paleta (alguns com cores
+próximas entre si, outros com muito contraste). Pelo menos um de fundo claro e
+um de fundo médio.
+Mostre cada tema aplicado numa mesma tela de exemplo (uma curva de espectro +
+uma onda) pra dar pra comparar lado a lado.
 
 C) COMPOSIÇÃO POR PROPORÇÃO
 Pegue 3 dos módulos que já existem e mostre como cada um deveria se recompor

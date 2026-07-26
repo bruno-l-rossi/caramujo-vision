@@ -75,21 +75,11 @@
 <div id="modal" class="hidden">
   <div class="box">
     <h2>CARAMUJO VISION</h2>
-    <p>Visualizador de áudio em tempo real. Ele escuta o som que sai do seu computador e desenha na tela: medidores de estúdio e arte que reage à música.</p>
+    <p>Visualizador de áudio em tempo real. Medidores de estúdio e arte que reage à música, gravável em vídeo.</p>
 
-    <h3>Como usar</h3>
-    <ol>
-      <li>Toque um som qualquer (FL Studio, YouTube, o que for).</li>
-      <li>Leve o mouse ao topo da tela e clique em <b>☰ MENU</b>.</li>
-      <li>Em <b>TEMPLATES</b>, escolha um ponto de partida pronto.</li>
-    </ol>
-    <p>Passe o mouse num painel pra ver os botões: <b>⚙</b> ajusta, <b>●</b> grava vídeo, <b>✕</b> fecha. Arraste as bordas pra mudar o tamanho, a alça <b>⠿</b> pra trocar de lugar e a <b>✥</b> pra mover a janela. Tecla <b>H</b> abre o menu.</p>
-
-    <h3>Áudio</h3>
-    <p id="audiostat">Verificando…</p>
-    <p>A captura é <b>nativa e em estéreo</b>, sem driver nenhum e sem passar pelo microfone. Na primeira vez o macOS pede a permissão de <b>gravação de tela</b>: é o que libera o som do sistema. Autorize e reabra o app.</p>
-    <div class="cfgrow"><label>Entrada</label><select id="srcpick" title="Trocar a fonte de áudio"></select></div>
-    <p style="opacity:0.7">Deixe em <b>ÁUDIO DO COMPUTADOR</b> pro uso normal. As outras opções são entradas do sistema (interface, microfone, BlackHole), úteis se a captura nativa não funcionar no seu Mac.</p>
+    <h3>Entrada de áudio</h3>
+    <div class="cfgrow"><select id="srcpick"></select></div>
+    <p id="audiostat" class="mono"></p>
 
     <h3>Contato</h3>
     <p>rideblan / Caramujo Records · <a href="https://instagram.com/rideblan33" target="_blank">@rideblan33</a></p>
