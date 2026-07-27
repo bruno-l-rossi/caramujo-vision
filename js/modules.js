@@ -245,9 +245,10 @@
   /* ================= ESPECTRO ================= */
   CV.register('spectrum', {
     name: 'Espectro', group: 'Estúdio',
-    defaults: defs({ fill: 1, smooth: 1.0, nivelar: 0.7, grade: 1, glow: 8 }),
+    defaults: defs({ fill: 1, smooth: 1.0, nivelar: 0.7, grade: 1, glow: 8, teto: 1.5 }),
     schema: [
       { k: 'sens', label: 'Ganho', min: 0.2, max: 3, step: 0.05, def: 1 },
+      { k: 'teto', label: 'Teto (folga)', min: 1, max: 3, step: 0.05, def: 1.5 },
       { k: 'smooth', label: 'Suavidade', min: 0.2, max: 3, step: 0.05, def: 1.0 },
       { k: 'nivelar', label: 'Nivelar agudos', min: 0, max: 1, step: 0.05, def: 0.7 },
       { k: 'glow', label: 'Brilho da linha', min: 0, max: 40, step: 1, def: 8 },
@@ -285,11 +286,19 @@
       }
       var att = Math.min(1, 40 * dt / s.smooth), rel = Math.min(1, 3.6 * dt / s.smooth);
       var attS = att * 0.5, relS = rel * 0.45;
-      var baseH = h * 0.92;
+      var baseH = h * 0.97;               // usa quase toda a altura do painel
+      var teto = s.teto || 1.5;           // folga acima do sinal: a curva não vive no talo
+      /* limite macio: em vez de cortar reto em 1 (que achata o topo e come a dinâmica),
+         a curva desacelera perto do teto e só encosta nele assintoticamente. */
+      function soft(v) {
+        var K = 0.72;
+        if (v <= K) return v;
+        return K + (1 - Math.exp(-(v - K) * 2.6)) * (1 - K);
+      }
       for (i = 0; i < N; i++) {
         var fr = FMIN * Math.pow(FMAX / FMIN, i / (N - 1));
         var tilt = 1 + (Math.min(3.5, Math.pow(fr / 90, 0.32)) - 1) * s.nivelar;
-        var v = Math.pow(magAt(fr), 1.4) * s.sens * tilt; if (v > 1) v = 1;
+        var v = soft(Math.pow(magAt(fr), 1.25) * s.sens * tilt / teto);
         var cur = m.st.vals[i];
         m.st.vals[i] = cur + (v - cur) * (v > cur ? att : rel);
         var cs = m.st.slow[i];

@@ -104,4 +104,10 @@ Ao propor módulo novo: tem que ser claramente diferente do que já existe e vis
 - Distribuição: package.json com mac.identity=null e hardenedRuntime=false (build local sem conta Apple), dmg com artifactName Caramujo-Vision-${version}-${arch}.dmg, compression maximum, arm64 + x64.
 - docs/v2-claude-design.md: insumo + prompt pronto pro Bruno refinar visuais/paletas/módulos no Claude Design na v2.
 </v3_final>
+
+<ajustes_v3>
+- ESPECTRO, normalização: tinha `if (v>1) v=1` (corte reto) com baseH 0.92 → topo achatado e dinâmica comida, ainda mais com analysisGain 1.8. Agora: expoente 1.25 (era 1.4), divisão por `teto` (slider "Teto (folga)", 1..3, padrão 1.5) e LIMITE MACIO (função soft, joelho em 0.72, assíntota em 1) em vez de clamp. baseH subiu pra 0.97. Resultado medido: sinal 1.5x/2x/3x agora dá 0.865/0.943/0.990 (antes todos 1.00 grudados).
+- MATIZ: o slider só valia com Cor = "Própria", então parecia quebrado. Agora mexer no Matiz LIGA colorMode='custom' sozinho e atualiza o select na gaveta.
+- GAVETA DE AJUSTES: fecha sozinha ao clicar fora (mousedown). Ficam de fora da regra: a própria gaveta e o painel que está sendo ajustado (pra poder clicar nele sem perder os controles).
+</ajustes_v3>
 </contexto_continuidade>

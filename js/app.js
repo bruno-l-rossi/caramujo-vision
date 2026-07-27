@@ -313,6 +313,15 @@
     drawerPanel = null;
     document.body.classList.remove('drawer-open');
   }
+  /* clicou fora dos ajustes? fecha sozinho. O painel que está sendo ajustado fica
+     de fora (dá pra clicar nele sem perder a gaveta), e o ⚙ também, senão o clique
+     fecharia e reabriria na mesma hora. */
+  window.addEventListener('mousedown', function (e) {
+    if (!drawerPanel) return;
+    if (drawerEl && drawerEl.contains(e.target)) return;
+    if (drawerPanel.el && drawerPanel.el.contains(e.target)) return;
+    closeDrawer();
+  });
   function toggleCfg(p) {
     if (drawerPanel === p) { closeDrawer(); return; }
     drawerPanel = p;
@@ -352,6 +361,13 @@
         var k = inp.getAttribute('data-k');
         if (inp.tagName === 'SELECT' || inp.getAttribute('data-type') === 'text') p.s[k] = inp.value;
         else p.s[k] = parseFloat(inp.value);
+        // mexer no Matiz já liga a cor própria: senão o slider não mudava nada
+        // (a matiz só valia com Cor = Própria, e ninguém adivinha isso)
+        if (k === 'hue' && p.s.colorMode !== 'custom') {
+          p.s.colorMode = 'custom';
+          var sel = box.querySelector('[data-k="colorMode"]');
+          if (sel) sel.value = 'custom';
+        }
         save();
       });
     });
