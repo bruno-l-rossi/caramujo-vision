@@ -2,3 +2,7 @@ node_modules/
 dist/
 assets/demo-beat.*
 .DS_Store
+backup-antes-otimizacao/
+test/.fuse_hidden*
+backup-v1/
+backup-v2.0/

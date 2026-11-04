@@ -9,87 +9,73 @@
 </head>
 <body>
 
-<div id="topbar">
-  <span class="grp brand">
-    <img src="assets/logo.png" class="logoimg" alt="">
-    <span class="logo">CARAMUJO VISION</span>
-  </span>
-  <span class="grp" title="Templates prontos">
-    <select id="tpl" title="Escolha um ponto de partida"></select>
-    <button id="tplsave" title="Salvar do jeito que está">⭑</button>
-    <button id="tpldel" title="Apagar o template escolhido">🗑</button>
-  </span>
-  <span class="grp" title="Onde e como os módulos ficam">
-    <select id="layout" title="Formato da janela e arranjo dos módulos"></select>
-  </span>
-  <span class="grp" title="Cores">
-    <select id="theme" title="Tema de cores"></select>
-  </span>
-  <span class="grp" title="Adicionar visual">
-    <select id="addmod" title="Adicionar um módulo à tela"></select>
-  </span>
-  <span class="grp util">
-    <button id="pin" title="Manter na frente das outras janelas">📌</button>
-    <button id="fullapp" title="Tela cheia">⛶</button>
-  </span>
-  <select id="source" style="display:none"></select>
-  <button id="play" style="display:none">▶</button>
-</div>
-<div id="status"></div>
-
-<!-- controles de janela: sempre visíveis, fora da barra que some -->
-<div id="winctl">
-  <button id="helpbtn" title="Ajuda, áudio e contato">?</button>
-  <button id="winmin" title="Minimizar">–</button>
-  <button id="appquit" class="quit" title="Fechar o app">⏻</button>
-</div>
-
-<button id="edgetop" title="Menu: encoste o mouse pra abrir, clique pra fixar (ou tecla H)">☰ MENU</button>
-
+<!-- os visuais: linhas de painéis, montadas pelo app.js -->
 <div id="grid"></div>
 
-<div id="drawer">
-  <div class="dhead">
-    <span id="drawertitle">AJUSTES</span>
-    <button id="drawerclose" title="Fechar ajustes">✕ FECHAR</button>
-  </div>
-  <div id="drawerbody"></div>
+<!-- pós-produção: UMA passada por cima de todos os painéis (js/fx.js) -->
+<canvas id="fx"></canvas>
+
+<!-- barra de ferramentas: aparece quando o mouse entra na janela -->
+<div id="toolbar" role="toolbar" aria-label="Caramujo Vision">
+  <div class="tb-grab" title="Arraste pra mover a janela"><span class="logo"></span></div>
+  <button class="tb-preset" id="tbPreset" title="Presets: conjuntos prontos de visuais"><span class="tb-name">Barra</span><span class="tb-dirty"></span><i data-ic="chev"></i></button>
+  <span class="tb-sep"></span>
+  <button id="tbTheme" title="Tema (T troca)"><i data-ic="theme"></i></button>
+  <button id="tbPos" title="Posição da janela"><i data-ic="pos-bottom"></i></button>
+  <button id="tbPin" title="Sempre na frente"><i data-ic="pin"></i></button>
+  <button id="tbPause" title="Pausar (P)"><i data-ic="pause"></i></button>
+  <button id="tbSettings" title="Ajustes (S)"><i data-ic="sliders"></i></button>
+  <button id="tbMore" title="Mais"><i data-ic="dots"></i></button>
+  <span class="tb-sep win"></span>
+  <button id="tbMin" class="win" title="Minimizar"><i data-ic="min"></i></button>
+  <button id="tbClose" class="win quit" title="Fechar o app"><i data-ic="close"></i></button>
 </div>
 
-<canvas id="texture-overlay"></canvas>
+<!-- ajustes: folha no rodapé. Na barra encaixada a janela cresce pra ela caber -->
+<div id="settings" aria-label="Ajustes">
+  <nav id="settabs">
+    <button data-tab="visuais">Visuais</button>
+    <button data-tab="aparencia">Aparência</button>
+    <button data-tab="janela">Janela</button>
+    <button data-tab="audio">Áudio</button>
+    <button data-tab="gravacao">Gravação</button>
+    <button data-tab="atalhos">Atalhos</button>
+    <span class="grow"></span>
+    <button id="setclose" title="Fechar (Esc)">Fechar</button>
+  </nav>
+  <div id="setbody"></div>
+</div>
 
-<div id="splash" class="hidden"></div>
+<!-- menu suspenso e menu de contexto (um só elemento, reaproveitado) -->
+<div id="menu" class="hidden" role="menu"></div>
 
 <!-- caixinha de nome (o Electron não tem window.prompt) -->
 <div id="ask" class="hidden">
   <div class="askbox">
-    <label id="asklabel">Nome do template</label>
-    <input id="askinput" type="text" autocomplete="off" spellcheck="false">
+    <label id="asklabel">Nome do preset</label>
+    <input id="askinput" type="text" autocomplete="off" spellcheck="false" maxlength="40">
     <div class="askrow">
-      <button id="askcancel">CANCELAR</button>
-      <button id="askok">SALVAR</button>
+      <button id="askcancel">Cancelar</button>
+      <button id="askok">Salvar</button>
     </div>
   </div>
 </div>
 
-<div id="modal" class="hidden">
-  <div class="box">
-    <h2>CARAMUJO VISION</h2>
-    <p>Visualizador de áudio em tempo real. Medidores de estúdio e arte que reage à música, gravável em vídeo.</p>
-
-    <h3>Entrada de áudio</h3>
-    <div class="cfgrow"><select id="srcpick"></select></div>
-    <p id="audiostat" class="mono"></p>
-
-    <h3>Contato</h3>
-    <p>rideblan / Caramujo Records · <a href="https://instagram.com/rideblan33" target="_blank">@rideblan33</a></p>
-
-    <div class="close-row"><button id="modalclose">FECHAR</button></div>
-  </div>
+<!-- sem áudio / silêncio: aviso discreto no meio da tela -->
+<div id="empty" class="hidden">
+  <p id="emptymsg">Sem áudio chegando</p>
+  <button id="emptybtn">Ajustes de áudio</button>
 </div>
+
+<!-- avisos curtos -->
+<div id="toast"></div>
+
+<!-- contador de fps e de atraso do som (tecla F) -->
+<div id="hud"></div>
 
 <script src="js/audio.js"></script>
 <script src="js/modules.js"></script>
+<script src="js/fx.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

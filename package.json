@@ -1,7 +1,7 @@
 {
   "name": "caramujo-vision",
   "productName": "Caramujo Vision",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Visualizador de audio em tempo real: medidores de estudio e arte que reage a musica",
   "author": "rideblan",
   "license": "UNLICENSED",
@@ -10,6 +10,7 @@
     "start": "electron .",
     "dist": "electron-builder --mac dmg --publish never",
     "test": "node test/smoke.js .",
+    "bench4": "electron . --bench4",
     "audio-nativo": "npm install native-recorder-nodejs --save-optional --force --foreground-scripts",
     "audio-nativo-check": "node -e \"try{const m=require('native-recorder-nodejs');const A=m.AudioRecorder||m.default&&m.default.AudioRecorder;console.log('OK: modulo carregou');console.log('saidas:',JSON.stringify((A.getDevices('output')||[]).map(d=>d.id+':'+d.name)));}catch(e){console.log('FALHOU:',e.message)}\"",
     "dist-zip": "electron-builder --mac dmg zip --publish never"

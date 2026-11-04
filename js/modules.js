@@ -16,73 +16,334 @@
   var PALETTES = {
     // ---- ESCUROS ----
     preto:    [[0, 0, 100], [0, 0, 74], [0, 0, 50], [0, 0, 88]],           // branco puro, sem cor
-    neon:     [[318, 100, 62], [186, 100, 56], [268, 100, 70], [92, 100, 58]], // 4 cores berrantes e distantes
-    vhs:      [[6, 88, 48], [30, 92, 46], [16, 70, 34], [44, 78, 44]],     // quente, sujo, pouca luz e pouca variação
-    oceano:   [[192, 100, 62], [176, 100, 46], [214, 100, 40], [160, 90, 70]], // azul com faixa larga de luz
-    floresta: [[128, 46, 40], [96, 34, 32], [154, 40, 30], [78, 30, 44]],  // verdes dessaturados e fechados
-    rubi:     [[352, 100, 58], [0, 0, 96], [346, 90, 34], [12, 100, 50]],  // vermelho + um branco de contraste
-    ambar:    [[40, 100, 66], [30, 100, 54], [48, 96, 78], [22, 88, 42]],  // dourado com muita variação de luz
-    poente:   [[10, 100, 66], [330, 92, 70], [278, 84, 68], [46, 100, 66]], // pastel quente, luz alta
-    psy:      [[0, 0, 100], [0, 0, 70], [0, 0, 45], [0, 0, 85]],           // (a matiz gira em CV.pal)
+    // fósforo: UMA cor, quatro luzes. É assim que tubo de osciloscópio se comporta.
+    fosforo:  [[138, 88, 62], [136, 70, 40], [144, 100, 82], [128, 60, 26]],
+    // planta: creme e branco de nanquim sobre o azul; a cor mora no fundo, não no traço
+    planta:   [[42, 34, 92], [30, 18, 78], [0, 0, 100], [50, 46, 66]],
+    /* minimeters: uma cor por módulo, na ordem que os nossos leem a paleta.
+       0 = curva esquerda do espectro (vermelho), 1 = osciloscópio (verde),
+       2 = curva direita (azul), 3 = estéreo (laranja). */
+    minimeters: [[352, 78, 58], [122, 45, 58], [212, 72, 60], [28, 88, 58]],
+    // ---- MÉDIOS ----
+    ardosia:  [[44, 68, 78], [12, 74, 64], [172, 34, 74], [30, 62, 72]],
+    // carvão: branco quente sobre grafite, variação só de luz
+    carvao:   [[36, 16, 98], [0, 0, 80], [28, 22, 62], [42, 12, 90]],
+    // ---- MÉDIOS DE MEIO-TOM ----
+    chumbo:   [[0, 0, 96], [202, 34, 86], [38, 42, 80], [0, 0, 72]],
     // ---- CLAROS: traço ESCURO, senão some no fundo ----
-    papel:    [[0, 0, 8], [0, 0, 26], [0, 0, 42], [0, 0, 16]],
-    gelo:     [[214, 100, 22], [196, 100, 30], [246, 62, 40], [178, 96, 18]],
+    tijolo:   [[16, 72, 22], [352, 56, 26], [32, 62, 18], [0, 0, 14]],
+    musgo:    [[92, 58, 18], [64, 52, 24], [148, 42, 20], [30, 50, 16]],
     areia:    [[16, 92, 26], [0, 78, 32], [32, 100, 22], [350, 62, 20]],
-    lavanda:  [[272, 54, 26], [316, 48, 36], [226, 60, 30], [290, 40, 16]],
-    // ---- MÉDIO ----
-    ardosia:  [[44, 68, 78], [12, 74, 64], [172, 34, 74], [30, 62, 72]]
+    // jornal: tinta sépia gasta, faixa curta de luz (impressão barata não tem contraste)
+    jornal:   [[26, 62, 16], [16, 45, 28], [38, 52, 22], [8, 40, 12]],
+    gelo:     [[214, 100, 22], [196, 100, 30], [246, 62, 40], [178, 96, 18]],
+    papel:    [[0, 0, 8], [0, 0, 26], [0, 0, 42], [0, 0, 16]]
   };
 
 
+
+  /* ================= COLOR MAPS =================
+     A ideia que o MiniMeters separa e a gente tinha juntado: TEMA é o cromo (fundo,
+     texto, cor da linha) e COLOR MAP é um gradiente contínuo que cada módulo aplica na
+     SUA própria grandeza. O espectro pinta por magnitude, o espectrograma por energia,
+     a onda por banda, o estéreo por canal. Mesmo mapa, resultado diferente em cada
+     painel: é isso que tira a monotonia de todos os módulos saírem da mesma cor.
+     Pontos de controle em RGB 0-255, interpolados. */
+  var CMAPS = {
+    viridis:   [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]],
+    magma:     [[0,0,4],[28,16,68],[79,18,123],[129,37,129],[181,54,122],[229,80,100],[251,135,97],[254,194,135],[252,253,191]],
+    inferno:   [[0,0,4],[31,12,72],[85,15,109],[136,34,106],[186,54,85],[227,89,51],[249,142,9],[252,200,45],[252,255,164]],
+    plasma:    [[13,8,135],[75,3,161],[125,3,168],[168,34,150],[203,70,121],[229,107,93],[248,148,65],[253,195,40],[240,249,33]],
+    rocket:    [[3,5,26],[47,15,61],[95,20,80],[145,26,80],[194,45,60],[228,88,53],[240,138,90],[247,187,145],[250,235,221]],
+    mako:      [[11,4,10],[35,23,55],[46,52,98],[45,86,124],[42,120,137],[47,155,141],[80,188,131],[147,215,131],[222,238,180]],
+    crest:     [[164,220,141],[121,204,143],[81,186,150],[52,165,156],[42,141,158],[45,116,152],[47,91,140],[42,68,124]],
+    flare:     [[237,206,138],[240,169,110],[238,133,97],[228,99,101],[209,70,114],[178,53,124],[143,45,124],[109,42,113]],
+    cubehelix: [[0,0,0],[27,25,66],[26,66,86],[36,105,79],[80,130,64],[150,140,74],[210,148,126],[236,175,192],[240,215,232],[255,255,255]],
+    turbo:     [[48,18,59],[62,73,196],[42,142,240],[26,196,192],[93,229,116],[176,238,55],[240,199,36],[254,132,25],[224,60,10],[122,4,3]],
+    fogo:      [[0,0,0],[60,0,0],[130,10,0],[200,50,0],[240,120,10],[255,190,60],[255,245,190]],
+    gelo:      [[2,4,20],[10,30,70],[16,64,124],[30,110,170],[70,160,205],[140,205,230],[220,245,255]],
+    cinza:     [[0,0,0],[64,64,64],[128,128,128],[192,192,192],[255,255,255]],
+    rua:       [[6,4,4],[52,10,8],[112,20,12],[178,44,14],[226,96,20],[246,160,44],[255,214,120]]
+  };
+  CV.CMAP_LIST = [
+    ['auto', 'Do tema'], ['viridis', 'Viridis'], ['magma', 'Magma'], ['inferno', 'Inferno'],
+    ['plasma', 'Plasma'], ['rocket', 'Rocket'], ['mako', 'Mako'], ['crest', 'Crest'],
+    ['flare', 'Flare'], ['cubehelix', 'Cubehelix'], ['turbo', 'Turbo'], ['fogo', 'Fogo'],
+    ['gelo', 'Gelo'], ['cinza', 'Cinza'], ['rua', 'Rua']
+  ];
+  // cada tema tem o mapa que combina com ele; 'auto' usa este
+  var THEME_CMAP = {
+    preto: 'cinza', fosforo: 'crest', minimeters: 'flare', planta: 'gelo', ardosia: 'flare',
+    carvao: 'cinza', chumbo: 'gelo', tijolo: 'fogo', musgo: 'crest',
+    areia: 'fogo', jornal: 'rocket', gelo: 'gelo', papel: 'cinza'
+  };
+  CV.cmap0 = 'auto';   // escolha global (menu Color Map)
+  var _cmCache = new Map();
+  /* devolve a cor do mapa na posição v (0..1). Retorna string CSS pronta, com cache:
+     um espectro de 800 barras chamaria isto 800 vezes por quadro. */
+  /* UM MAPA DE COR POR MÓDULO, quando o tema pede.
+     Um mapa só pro tema inteiro não dá conta de copiar o MiniMeters: lá o loudness
+     é azul, o osciloscópio verde, o estéreo amarelo e o espectro vermelho, tudo ao
+     mesmo tempo. THEME_MOD_CMAP resolve isso sem tirar de você a escolha por
+     painel, que continua tendo a última palavra. */
+  var THEME_MOD_CMAP = {
+    minimeters: {
+      spectrum: 'rocket', wavescroll: 'rocket', loudness: 'gelo',
+      gonio: 'viridis', scope: 'crest', spectrogram: 'magma'
+    }
+  };
+  CV.cmapName = function (m) {
+    var own = m && m.s && m.s.cmap;
+    if (own && own !== 'auto') return own;
+    if (CV.cmap0 && CV.cmap0 !== 'auto') return CV.cmap0;
+    var th = CV.themeOf(m);
+    var porMod = THEME_MOD_CMAP[th];
+    if (porMod && m && m.modId && porMod[m.modId]) return porMod[m.modId];
+    return THEME_CMAP[th] || 'cinza';
+  };
+  CV.cmapRgb = function (name, v) {
+    var pts = CMAPS[name] || CMAPS.cinza;
+    if (v < 0) v = 0; else if (v > 1) v = 1;
+    var x = v * (pts.length - 1), i = x | 0;
+    if (i > pts.length - 2) i = pts.length - 2;
+    var f = x - i, a = pts[i], b = pts[i + 1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  };
+  CV.cmap = function (m, v, alpha) {
+    var name = CV.cmapName(m);
+    /* FUNDO CLARO INVERTE O MAPA. Os mapas vão do escuro pro claro, então no papel o
+       sinal forte saía quase branco em cima de branco (o osciloscópio sumia no tema
+       PAPEL). Com o mapa do tema, no fundo claro o forte vira escuro. Mapa escolhido
+       a dedo no painel continua do jeito que veio. */
+    if (!(m && m.s && m.s.cmap && m.s.cmap !== 'auto') && CV.isLight(m)) v = 1 - v * 0.92;
+    var q = (v * 127) | 0; if (q < 0) q = 0; else if (q > 127) q = 127;
+    var qa = alpha === undefined ? 32 : (alpha * 32) | 0;
+    if (qa < 0) qa = 0; else if (qa > 32) qa = 32;
+    var key = name + (q + qa * 128);
+    var s = _cmCache.get(key);
+    if (s !== undefined) return s;
+    var c = CV.cmapRgb(name, q / 127);
+    s = qa >= 32
+      ? 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')'
+      : 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + (qa / 32) + ')';
+    if (_cmCache.size > 12000) _cmCache.clear();
+    _cmCache.set(key, s);
+    return s;
+  };
 
   /* fundo por tema: contraste e temperatura mudam junto com a paleta.
      bg = fundo do painel, ink = quanto a cor "pega" na tela (grade, textos). */
+  /* ================= TEMAS: NOVE LUGARES DIFERENTES =================
+     A leva anterior tinha oito temas escuros que eram o mesmo tema com outra
+     matiz (neon, vhs, âmbar, poente, psy, rubi, floresta, oceano). Trocar entre
+     eles não mudava nada além da cor do traço. Saíram todos.
+     Cada tema que ficou muda CINCO coisas, e nenhuma delas é só a matiz:
+       1. a luz do fundo, numa escada larga: 0 · 5 · 29 · 65 · 90 · 199 · 211 · 228 · 231
+       2. a força da grade, de invisível (0,06) a papel milimetrado (0,45)
+       3. a ESPESSURA do traço (lw), que muda a personalidade do desenho inteiro
+       4. a paleta, e quanta variação de luz existe dentro dela
+       5. o mapa de cor padrão
+     Fósforo tem traço gordo e brilho de tubo. Planta é o único onde a grade é a
+     estrela e o traço é fio. Papel quase não tem grade; gelo é papel milimetrado.
+     Trocar de tema tem que dar a sensação de trocar de aparelho. */
   var THEME_BG = {
-    /* Cada tema muda quatro coisas, não só a cor: quão escuro é o fundo, quanto
-       o painel se destaca do fundo, quão forte é a grade, e a paleta do traço.
-       É isso que faz VHS parecer fita velha e OCEANO parecer água funda. */
-    // --- muito escuros, grade quase invisível: o traço domina ---
-    preto:    { bg: '#050506', panel: '#08080a', grid: 0.06, text: '#8b8b91', ink: '#f0efe9' },
-    rubi:     { bg: '#0b0104', panel: '#150309', grid: 0.05, text: '#a85c72', ink: '#ffd9e2' },
-    floresta: { bg: '#040d08', panel: '#07150d', grid: 0.05, text: '#5f8a6d', ink: '#cfe8d6' },
-    psy:      { bg: '#07030d', panel: '#0c0616', grid: 0.07, text: '#9a7fbd', ink: '#f6e9ff' },
-    // --- escuros com painel destacado e grade forte: cara de instrumento ---
-    neon:     { bg: '#04030e', panel: '#0a0820', grid: 0.14, text: '#8a86c9', ink: '#f0e9ff' },
-    oceano:   { bg: '#02101c', panel: '#082438', grid: 0.16, text: '#74b4d6', ink: '#e0f4ff' },
-    // --- médios quentes, bem levantados do preto ---
-    vhs:      { bg: '#2a1109', panel: '#37180d', grid: 0.2, text: '#d99a75', ink: '#ffd0ac' },
-    ambar:    { bg: '#241704', panel: '#312007', grid: 0.18, text: '#d4a860', ink: '#ffeec2' },
-    poente:   { bg: '#3a1d2c', panel: '#4a2839', grid: 0.22, text: '#e8a9b8', ink: '#fff0e6' },
-    ardosia:  { bg: '#374545', panel: '#3e4e4e', grid: 0.18, text: '#c2ccc8', ink: '#f6ecc9' },
-    // --- claros, em três níveis de luz ---
-    papel:    { bg: '#e9e7e0', panel: '#f4f2ec', grid: 0.42, text: '#55554e', ink: '#121210', light: 1 },
-    gelo:     { bg: '#dbe7ee', panel: '#eef5f9', grid: 0.3, text: '#4a6270', ink: '#0d2733', light: 1 },
-    areia:    { bg: '#d6c5a8', panel: '#e4d7c0', grid: 0.4, text: '#6b5a44', ink: '#241a10', light: 1 },
-    lavanda:  { bg: '#b9aed2', panel: '#cdc4e0', grid: 0.38, text: '#4c4363', ink: '#1d1630', light: 1 }
+    // --- escuros ---
+    // preto absoluto e traço gordo de tubo de osciloscópio: o verde é consequência, não o assunto
+    fosforo:  { bg: '#000000', panel: '#010401', grid: 0.22, text: '#4fbf6a', ink: '#c6ffd6', lw: 1.45,
+      cor: { spectrum: ['#5dff8f', '#2f9e55', '#0b3a1a'], loudness: ['#5dff8f', '#0c2414'], scope: ['#7dffa6', '#1f6b3a'], gonio: ['#2fbf5f', '#c6ffd6'], wavescroll: ['#4fe880'], vu: ['#9dffb8', '#ff5a4a'] } },
+    // o padrão limpo: quase preto, grade que some, fio de 1px sozinho na tela
+    preto:    { bg: '#050506', panel: '#08080a', grid: 0.06, text: '#8b8b91', ink: '#f0efe9', lw: 1,
+      cor: { spectrum: ['#f0efe9', '#8d8d93', '#2a2a2e'], loudness: ['#f0efe9', '#1c1c20'], scope: ['#f0efe9', '#4a4a50'], gonio: ['#8a8a92', '#ffffff'], wavescroll: ['#e8e8e4'], vu: ['#f0efe9', '#ff5a6a'] } },
+    /* MINIMETERS: réplica do print, pra comparar os dois lado a lado. Fundo quase
+       preto neutro e uma cor por módulo (vermelho e azul no espectro, verde no
+       osciloscópio, laranja no estéreo), que é como o dele se distribui. */
+    /* cores medidas pixel a pixel num quadro do vídeo dele, não estimadas:
+       fundo #191919, onda #fd5648, loudness #4da9fc, osciloscópio #52945d sobre
+       #3e6944, estéreo #e5003a com creme #d4ab8d, espectro #fc4c69 e #3a93fb. */
+    minimeters: {
+      bg: '#191919', panel: '#191919', grid: 0.22, text: '#9a9a9a', ink: '#e8e8e8', lw: 1,
+      cor: {
+        spectrum: ['#fc4c69', '#3a93fb', '#4a0a1c'],
+        loudness: ['#4da9fc', '#1e2529'],
+        scope: ['#6fb87b', '#3e6944'],
+        gonio: ['#e5003a', '#f0e0cc'],
+        wavescroll: ['#fd5648'],
+        vu: ['#e8e8e8', '#fc4c69']
+      }
+    },
+    // planta de arquiteto: aqui a GRADE é o desenho e o traço é fio fino por cima
+    planta:   { bg: '#0e2038', panel: '#132a4c', grid: 0.5, text: '#93b4d8', ink: '#f4ecda', lw: 0.75,
+      cor: { spectrum: ['#f4ecda', '#9cc3ff', '#1d3c66'], loudness: ['#f4ecda', '#1c375e'], scope: ['#f4ecda', '#4f73a3'], gonio: ['#9cc3ff', '#f4ecda'], wavescroll: ['#e9e1cc'], vu: ['#f4ecda', '#ff7a6a'] } },
+    // --- médios ---
+    // ardósia: cinza-azulado com creme quente, grade média
+    ardosia:  { bg: '#374545', panel: '#3e4e4e', grid: 0.2, text: '#c2ccc8', ink: '#f6ecc9', lw: 1,
+      cor: { spectrum: ['#f6ecc9', '#9fd3c7', '#2c3a3a'], loudness: ['#f6ecc9', '#334242'], scope: ['#f6ecc9', '#6f8c85'], gonio: ['#e6b07a', '#f6ecc9'], wavescroll: ['#f0dfb0'], vu: ['#f6ecc9', '#ff8a6a'] } },
+    // carvão: chapa de grafite CLARA o bastante pra não ser "mais um fundo escuro".
+    // Fundo cinza neutro alto, grade fraca, traço branco quente e grosso.
+    carvao:   { bg: '#5b5d60', panel: '#65676a', grid: 0.14, text: '#e2e4e8', ink: '#ffffff', lw: 1.25 },
+    // --- MÉDIOS DE VERDADE: a faixa entre 93 e 199 estava vazia ---
+    // chumbo: cinza-azulado de meio-tom, ainda com traço claro
+    chumbo:   { bg: '#6f7480', panel: '#787d8a', grid: 0.24, text: '#e6ebf2', ink: '#ffffff', lw: 1,
+      cor: { spectrum: ['#ffffff', '#c4e2ff', '#5f6470'], loudness: ['#ffffff', '#666b77'], scope: ['#ffffff', '#9aa4b6'], gonio: ['#cfe6ff', '#ffffff'], wavescroll: ['#f4f7fb'], vu: ['#ffffff', '#ff6b6b'] } },
+    // tijolo: barro claro, traço escuro. O primeiro que inverte, e já bem levantado
+    tijolo:   { bg: '#b08268', panel: '#bd9077', grid: 0.18, text: '#4a2c1c', ink: '#2a1409', light: 1, lw: 1.2,
+      cor: { spectrum: ['#3a1606', '#7a2e12', '#a5735a'], loudness: ['#3a1606', '#a87a62'], scope: ['#2a1409', '#8a4a2c'], gonio: ['#7a2e12', '#2a1409'], wavescroll: ['#3a1606'], vu: ['#2a1409', '#a4161a'] } },
+    // musgo: verde-oliva desbotado com grade forte, quase um papel de horta
+    musgo:    { bg: '#b9bd9a', panel: '#c6c9a9', grid: 0.34, text: '#4b512f', ink: '#20240f', light: 1, lw: 0.95 },
+    // --- claros, cada um com uma grade de personalidade diferente ---
+    // areia: bege médio, o mais escuro dos claros, grade fraca
+    areia:    { bg: '#d6c5a8', panel: '#e4d7c0', grid: 0.22, text: '#6b5a44', ink: '#241a10', light: 1, lw: 1.15,
+      cor: { spectrum: ['#2a1c10', '#a4521f', '#c9b693'], loudness: ['#3a2a18', '#d3c3a5'], scope: ['#241a10', '#a68c66'], gonio: ['#a4521f', '#241a10'], wavescroll: ['#3a2a18'], vu: ['#241a10', '#b3261e'] } },
+    // jornal: papel amarelado meio sujo, tinta sépia escura, traço encorpado
+    jornal:   { bg: '#ded3b8', panel: '#e9e0c9', grid: 0.3, text: '#6b6045', ink: '#1a1408', light: 1, lw: 1.3 },
+    // gelo: papel MILIMETRADO frio, a grade mais forte de todas
+    gelo:     { bg: '#dbe7ee', panel: '#eef5f9', grid: 0.45, text: '#4a6270', ink: '#0d2733', light: 1, lw: 1,
+      cor: { spectrum: ['#0d2733', '#2f7fc1', '#c9dce8'], loudness: ['#0d4a66', '#d4e3ec'], scope: ['#0d2733', '#7aa6c2'], gonio: ['#2f7fc1', '#0d2733'], wavescroll: ['#123a4d'], vu: ['#0d2733', '#c62828'] } },
+    // papel: folha limpa, quase sem grade, fio fino: o desenho flutua
+    papel:    { bg: '#e9e7e0', panel: '#f4f2ec', grid: 0.14, text: '#55554e', ink: '#121210', light: 1, lw: 0.9,
+      cor: { spectrum: ['#121210', '#7a7a74', '#d8d5cc'], loudness: ['#121210', '#dedbd2'], scope: ['#121210', '#9a978e'], gonio: ['#55554e', '#121210'], wavescroll: ['#1e1e1b'], vu: ['#121210', '#c62828'] } }
+  };
+  /* AMOSTRA DO TEMA pro cartão da tela de ajustes: fundo, tinta e as cores que os
+     visuais vão usar. Sai do mesmo lugar que os módulos leem, então o cartão nunca
+     mente sobre o que o tema faz. */
+  CV.themePreview = function (th) {
+    var b = THEME_BG[th] || THEME_BG.preto;
+    var cores = [];
+    if (b.cor) {
+      ['spectrum', 'scope', 'loudness', 'gonio'].forEach(function (k) { if (b.cor[k]) cores.push(b.cor[k][0]); });
+    } else {
+      (PALETTES[th] || PALETTES.preto).slice(0, 3).forEach(function (c) {
+        cores.push('hsl(' + c[0] + ',' + c[1] + '%,' + c[2] + '%)');
+      });
+    }
+    return { bg: b.bg, panel: b.panel, ink: b.ink, text: b.text, light: !!b.light, grid: b.grid, cores: cores };
   };
 
+  /* tema que saiu vira o mais próximo, sem apagar nada do que ele salvou */
+  var THEME_MIGRA = {
+    mono: 'preto', vapor: 'preto', psy: 'fosforo', neon: 'fosforo',
+    vhs: 'jornal', ambar: 'jornal', poente: 'areia',
+    oceano: 'planta', rubi: 'carvao', floresta: 'carvao', lavanda: 'papel'
+  };
+  CV.themeMigra = function (th) { return THEME_MIGRA[th] || (THEME_BG[th] ? th : 'preto'); };
 
-  CV.themeBg = function (th) { return THEME_BG[th] || THEME_BG.preto; };
+
+  /* ajuste fino do fundo (CV.bgAdj, mexido pelo botão ◐ do menu):
+     claridade, saturação, matiz e contraste aplicados por cima do tema escolhido. */
+  CV.bgAdj = { l: 0, s: 0, h: 0, c: 0 };
+  function hexToRgb(x) { return [parseInt(x.substr(1, 2), 16), parseInt(x.substr(3, 2), 16), parseInt(x.substr(5, 2), 16)]; }
+  function rgbToHex(r, g, b) {
+    function c2(v) { v = Math.round(Math.max(0, Math.min(255, v))); return (v < 16 ? '0' : '') + v.toString(16); }
+    return '#' + c2(r) + c2(g) + c2(b);
+  }
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, s = 0, h = 0;
+    if (mx !== mn) {
+      var dd = mx - mn;
+      s = l > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn);
+      if (mx === r) h = (g - b) / dd + (g < b ? 6 : 0);
+      else if (mx === g) h = (b - r) / dd + 2;
+      else h = (r - g) / dd + 4;
+      h *= 60;
+    }
+    return [h, s * 100, l * 100];
+  }
+  function hslToRgb(h, s, l) {
+    h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
+    var c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), mm = l - c / 2, r, g, b;
+    if (h < 60) { r = c; g = x; b = 0; } else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; } else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; } else { r = c; g = 0; b = x; }
+    return [(r + mm) * 255, (g + mm) * 255, (b + mm) * 255];
+  }
+  CV.adjHex = function (hex, extraL) {
+    var a = CV.bgAdj;
+    if (!a.l && !a.s && !a.h && !a.c && !extraL) return hex;
+    var rgb = hexToRgb(hex), hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+    var L = hsl[2] + a.l + (extraL || 0);
+    // contraste afasta o fundo do cinza médio (ou aproxima, se negativo)
+    L = 50 + (L - 50) * (1 + a.c / 100);
+    var out = hslToRgb(hsl[0] + a.h, Math.max(0, Math.min(100, hsl[1] + a.s)), Math.max(0, Math.min(100, L)));
+    return rgbToHex(out[0], out[1], out[2]);
+  };
+  CV.themeBg = function (th) {
+    var b = THEME_BG[th] || THEME_BG.preto;
+    var a = CV.bgAdj;
+    if (!a.l && !a.s && !a.h && !a.c) return b;
+    var o = {}; for (var k in b) o[k] = b[k];
+    o.bg = CV.adjHex(b.bg); o.panel = CV.adjHex(b.panel);
+    // se o fundo clareou muito, o módulo passa a se comportar como tema claro
+    var rgb = hexToRgb(o.bg), lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+    o.light = lum > 128 ? 1 : 0;
+    return o;
+  };
   // fundo do painel do módulo (respeita tema próprio do módulo)
   CV.bgOf = function (m) { return CV.themeBg(CV.themeOf(m)).panel; };
   // tema efetivo do módulo: o dele (m.s.theme) se escolhido, senão o global. Permite mesclar temas.
   CV.themeOf = function (m) {
-    return (m && m.s && m.s.theme && m.s.theme !== 'global') ? m.s.theme : (CV.theme || 'psy');
+    return (m && m.s && m.s.theme && m.s.theme !== 'global') ? m.s.theme : (CV.theme || 'preto');
   };
   CV.pal = function (m, idx, t) {
+    /* mapa de cor escolhido no módulo vira a paleta dele: 4 amostras espalhadas.
+       É o que deixa dois módulos com o mesmo tema saírem de cores diferentes. */
+    var cm = m && m.s && m.s.cmap;
+    if (cm && cm !== 'auto') {
+      var rgbp = CV.cmapRgb(cm, ((idx % 4) + 0.5) / 4);
+      var hsl = rgbToHsl(rgbp[0], rgbp[1], rgbp[2]);
+      return [hsl[0], Math.min(100, hsl[1] * 1.05), Math.max(28, Math.min(88, hsl[2]))];
+    }
     if (m.s.colorMode === 'custom') return [(m.s.hue + idx * 32) % 360, 92, 60];
     var th = CV.themeOf(m);
-    if (th === 'psy') return [(t * 26 + idx * 65) % 360, 95, 60];
+    if (th === 'fosforo') return [(136 + idx * 5) % 360, 84, 34 + ((idx * 19) % 52)];
     var p = PALETTES[th] || PALETTES.preto;
     return p[((idx % p.length) + p.length) % p.length];
   };
-  CV.hsla = function (c, a) { return 'hsla(' + c[0].toFixed(1) + ',' + c[1] + '%,' + c[2] + '%,' + (a === undefined ? 1 : a) + ')'; };
+  /* CV.hsla com CACHE. Era o 3º gargalo do app: Campo de fluxo montava 520 frases de
+     cor por quadro (31 mil por segundo) só pra jogar fora. Agora a cor é arredondada
+     (0,5° de matiz, 1% de sat/luz, 1/128 de opacidade) e a MESMA string é reaproveitada.
+     Dobra o ganho: some a montagem da frase E o navegador não re-interpreta a cor,
+     porque reconhece a string por identidade. */
+  var _hslaCache = new Map();
+  CV.hsla = function (c, a) {
+    if (a === undefined) a = 1;
+    var h = c[0], s = c[1], l = c[2];
+    if (h < 0 || h >= 360) h = ((h % 360) + 360) % 360;
+    if (s < 0) s = 0; else if (s > 100) s = 100;
+    if (l < 0) l = 0; else if (l > 100) l = 100;
+    if (a < 0) a = 0; else if (a > 1) a = 1;
+    var qh = (h * 2) | 0, qs = (s + 0.5) | 0, ql = (l + 0.5) | 0, qa = (a * 128) | 0;
+    var key = qh + qs * 720 + ql * 72720 + qa * 7344720;
+    var v = _hslaCache.get(key);
+    if (v !== undefined) return v;
+    v = 'hsla(' + (qh * 0.5) + ',' + qs + '%,' + ql + '%,' + (qa / 128) + ')';
+    if (_hslaCache.size > 24000) _hslaCache.clear();
+    _hslaCache.set(key, v);
+    return v;
+  };
+  /* tabela de opacidades pronta pra um lote de partículas: em vez de uma frase por
+     ponto, o módulo pinta em N faixas de opacidade e troca de cor N vezes por quadro. */
+  CV.alphaSteps = function (m, key, col, steps, maxA) {
+    var st = m.st, cache = st._as || (st._as = {});
+    var e = cache[key];
+    var sig = col[0].toFixed(1) + '|' + col[1] + '|' + col[2] + '|' + steps + '|' + maxA.toFixed(3);
+    if (!e || e.sig !== sig) {
+      e = cache[key] = { sig: sig, arr: new Array(steps) };
+      for (var i = 0; i < steps; i++) e.arr[i] = CV.hsla(col, maxA * (i + 1) / steps);
+    }
+    return e.arr;
+  };
   // só o tema MONO força branco puro. O PAPEL (fundo claro) passa pela paleta,
   // que já devolve tons escuros, então os módulos ficam legíveis sem código extra.
   CV.isMono = function (m) {
     if (m.s.colorMode === 'custom') return false;
+    /* mapa de cor escolhido MANDA: sem isto os módulos que checam isMono primeiro
+       (fluxo, enxame, cordas, malha) continuavam brancos no tema preto e o mapa não
+       fazia nada. Era metade da monotonia. */
+    if (m.s && m.s.cmap && m.s.cmap !== 'auto') return false;
+    if (CV.cmap0 && CV.cmap0 !== 'auto') return false;
     var th = CV.themeOf(m);
-    return th === 'preto' || th === 'mono';
+    return th === 'preto' || th === 'mono' || th === 'carvao';
   };
   // tema de fundo claro: os módulos escurecem o traço em vez de clarear
   CV.isLight = function (m) { return !!CV.themeBg(CV.themeOf(m)).light; };
@@ -93,11 +354,84 @@
     c.globalCompositeOperation = (on === false) ? 'source-over' : (CV.isLight(m) ? 'multiply' : 'lighter');
   };
   // rastro intuitivo: slider 0..1, quanto MAIOR mais rastro. Converte pro alpha de limpeza (menor = rastro longo).
+  // espessura de linha do usuário multiplicando o valor pensado pelo módulo
+  /* ESPESSURA POR TEMA. É o que faz FÓSFORO parecer tubo (traço gordo) e PLANTA
+     parecer nanquim técnico (fio), com o mesmo desenho por baixo. */
+  /* COR EXATA POR MÓDULO, quando o tema traz uma. É o que permite copiar um app
+     inteiro sem torcer o mapa de cor: o tema diz "o loudness é #4da9fc" e pronto.
+     Devolve null quando o tema não define, e aí o módulo segue pelo caminho normal
+     (paleta ou mapa de cor). A escolha do painel continua ganhando de tudo. */
+  CV.corRGB = function (m, idx) {
+    if (!m || !m.modId) return null;
+    if (m.s && m.s.cmap && m.s.cmap !== 'auto') return null;
+    if (CV.cmap0 && CV.cmap0 !== 'auto') return null;
+    var t = THEME_BG[CV.themeOf(m)];
+    var lista = t && t.cor && t.cor[m.modId];
+    if (!lista) return null;
+    var hex = lista[Math.min(idx, lista.length - 1)];
+    return [parseInt(hex.substr(1, 2), 16), parseInt(hex.substr(3, 2), 16), parseInt(hex.substr(5, 2), 16)];
+  };
+  CV.corMod = function (m, idx, alpha) {
+    if (!m || !m.modId) return null;
+    if (m.s && m.s.cmap && m.s.cmap !== 'auto') return null;
+    if (m.s && m.s.colorMode === 'custom') return null;
+    if (CV.cmap0 && CV.cmap0 !== 'auto') return null;
+    var t = THEME_BG[CV.themeOf(m)];
+    var lista = t && t.cor && t.cor[m.modId];
+    if (!lista) return null;
+    var hex = lista[Math.min(idx, lista.length - 1)];
+    var r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + (alpha === undefined ? 1 : alpha) + ')';
+  };
+  CV.lw = function (m, base) {
+    // lê o THEME_BG direto: CV.themeBg refaz contas de cor e isto aqui roda a cada traço
+    var t = THEME_BG[CV.themeOf(m)];
+    return Math.max(0.3, base * ((m.s && m.s.lw) || 1) * ((t && t.lw) || 1));
+  };
   CV.trailClear = function (v) { v = v < 0 ? 0 : v > 1 ? 1 : v; return 0.5 - 0.47 * v; };
+  /* RASTRO QUE APAGA DE VERDADE. O véu na cor do fundo (source-over) empacava: em
+     8 bits a conta arredonda pra baixo e o fundo parava em 18 quando o tema pede 25,
+     então todo painel com rastro virava um quadrado mais escuro que os vizinhos. Agora
+     o rastro some tirando opacidade (destination-out): o canvas volta a ser
+     transparente e o fundo que aparece é o do painel, igual em todos os visuais. */
+  CV.fade = function (m, c, v) {
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'destination-out';
+    c.fillStyle = 'rgba(0,0,0,' + CV.trailClear(v).toFixed(3) + ')';
+    c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+    c.restore();
+  };
   // véu de limpeza na cor de fundo DO TEMA (antes era preto fixo: por isso os temas mudavam pouco)
   CV.trailFill = function (m, v) {
     var hex = CV.bgOf(m), r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
     return 'rgba(' + r + ',' + g + ',' + b + ',' + CV.trailClear(v) + ')';
+  };
+
+  /* TABELA DE BINS pronta. Espectro, espectrograma e Cordas faziam um Math.pow e uma
+     divisão por PONTO, em TODO quadro (220 + 160 + 28 = 408 potências por quadro, 24 mil
+     por segundo) pra chegar sempre no mesmo índice. Agora a tabela é montada uma vez e
+     refeita só quando o tamanho ou a taxa de amostragem muda. */
+  CV.binTable = function (m, key, N, nBins, binHz, fmin, fmax, invert) {
+    var st = m.st, cache = st._bt || (st._bt = {});
+    var e = cache[key];
+    var sig = N + '|' + nBins + '|' + binHz.toFixed(3) + '|' + fmin + '|' + fmax + '|' + (invert ? 1 : 0);
+    if (!e || e.sig !== sig) {
+      var arr = new Int32Array(N), hz = new Float32Array(N), ratio = fmax / fmin;
+      for (var i = 0; i < N; i++) {
+        var u = N > 1 ? i / (N - 1) : 0;
+        var fr = fmin * Math.pow(ratio, invert ? 1 - u : u);
+        hz[i] = fr;
+        var b = Math.round(fr / binHz);
+        arr[i] = b < 0 ? 0 : b > nBins - 1 ? nBins - 1 : b;
+      }
+      e = cache[key] = { sig: sig, bins: arr, hz: hz };
+    }
+    return invert === undefined ? e : e.bins;
+  };
+  CV.binTableFull = function (m, key, N, nBins, binHz, fmin, fmax, invert) {
+    CV.binTable(m, key, N, nBins, binHz, fmin, fmax, invert);
+    return m.st._bt[key];
   };
 
   var NOTES = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
@@ -119,12 +453,13 @@
   CV.fmtHz = function (f) { return f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1) + 'kHz' : Math.round(f) + 'Hz'; };
 
   var COMMON = [
-    { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-    { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-    { k: 'glow', label: 'Brilho', min: 0, max: 40, step: 1, def: 14 }
+    { k: 'sens', label: 'Sensibilidade', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
+    { k: 'speed', label: 'Velocidade', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
+    { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
   ];
   function defs(extra) {
-    var d = { sens: 1, speed: 1, glow: 14, colorMode: 'theme', hue: 180, theme: 'global' };
+    // fx = dose de pós-produção deste visual (1 = a intensidade global inteira)
+    var d = { sens: 1, speed: 1, colorMode: 'theme', hue: 180, theme: 'global', lw: 1, cmap: 'auto', fx: 1 };
     if (extra) for (var k in extra) d[k] = extra[k];
     return d;
   }
@@ -134,12 +469,89 @@
       o = document.createElement('canvas');
       o.width = Math.max(2, m.canvas.width); o.height = Math.max(2, m.canvas.height);
       m.st[key] = o;
+      m.st[key + 'Cur'] = 0;   // cursor do anel: ver CV.scrollRing
     }
     return o;
   }
+  /* ROLAGEM EM ANEL (onda rolante e espectrograma).
+     Antes: a cada quadro o buffer inteiro era copiado sobre si mesmo deslocado 1px
+     (numa faixa de 1440x200 são 288 mil pixels lidos e reescritos, 60 vezes por segundo).
+     Agora a coluna nova é escrita num cursor que anda em círculo, e a tela é montada
+     com 2 recortes. Mesmo desenho, um passe de pixel a menos por quadro. */
+  /* PASSO DA ROLAGEM EM TEMPO, não em quadro. Era um tanto fixo de pixels por
+     quadro: a 120Hz a onda corria o dobro de 60Hz, e com o limite de 30 quadros
+     andava pela metade. Agora a velocidade é a mesma em qualquer tela; o resto
+     fracionário fica guardado pro quadro seguinte. */
+  CV.passo = function (m, pxPor60, dt) {
+    var acc = (m.st._pa || 0) + pxPor60 * Math.min(0.1, dt || 1 / 60) * 60;
+    var dx = Math.floor(acc);
+    m.st._pa = acc - dx;
+    return dx;   // pode dar 0: numa tela de 120Hz a faixa anda um quadro sim, outro não
+  };
+  CV.scrollRing = {
+    // devolve o x onde escrever a coluna nova (e limpa a área)
+    next: function (m, key, buf, bc, dx) {
+      var cur = m.st[key + 'Cur'] || 0;
+      if (cur + dx > buf.width) {
+        // limpa o resto da faixa antes de voltar pro começo, senão sobra uma tira congelada
+        if (cur < buf.width) bc.clearRect(cur, 0, buf.width - cur, buf.height);
+        cur = 0;
+      }
+      bc.clearRect(cur, 0, dx, buf.height);
+      m.st[key + 'Cur'] = cur + dx;
+      return cur;
+    },
+    // monta o painel: o que está depois do cursor é o mais VELHO, vem primeiro
+    /* frac = o pedaço de pixel que a faixa já andou e ainda não virou coluna (o resto
+       do CV.passo). Puxar a imagem por essa fração é o que tira o tranco de 1 e 2
+       pixels da rolagem: a faixa desliza em vez de pular. O pedaço velho estica 1
+       pixel por cima da emenda, senão a borda meio coberta dos dois desenhos deixa
+       um fio transparente andando pela tela. */
+    blit: function (m, key, buf, c, w, h, frac) {
+      var end = m.st[key + 'Cur'] || 0, W = buf.width, k = w / W;
+      var tailW = W - end, off = (frac || 0) * k;
+      c.clearRect(0, 0, w, h);
+      if (end > 0) c.drawImage(buf, 0, 0, end, buf.height, tailW * k - off, 0, end * k, h);
+      if (tailW > 0) c.drawImage(buf, end, 0, tailW, buf.height, -off, 0, tailW * k + (end > 0 && off > 0 ? k : 0), h);
+    }
+  };
+  /* tamanho de fonte proporcional ao painel: um módulo pequeno na régua não pode
+     ter a mesma letra de um em tela cheia. base = tamanho pensado pra um painel ~340x200. */
+  /* v2: o texto cresce até 1,35x, não 2,6x. Rótulo de instrumento não é manchete:
+     num painel de 800px o "1kHz" de 23px brigava com a curva. Quem precisa crescer
+     de verdade (o número do LUFS) mede a sobra do painel e cresce por conta própria. */
+  CV.fs = function (m, base) {
+    if (!m || !m.w) return base;
+    var k = Math.sqrt((m.w * m.h) / (340 * 200));
+    return Math.max(7, Math.min(base * 1.35, base * Math.max(0.7, Math.min(1.35, k))));
+  };
+  // tamanho que acompanha o painel sem teto baixo: só pro número grande do LUFS
+  CV.fsBig = function (m, base) {
+    if (!m || !m.w) return base;
+    var k = Math.sqrt((m.w * m.h) / (340 * 200));
+    return Math.max(7, base * Math.max(0.62, Math.min(2.6, k)));
+  };
+  CV.font = function (m, base, weight) {
+    return (weight ? weight + ' ' : '') + CV.fs(m, base).toFixed(1) + 'px "SF Mono", ui-monospace, monospace';
+  };
+
+  /* DETALHE PROPORCIONAL AO PAINEL.
+     As contagens da arte eram números fixos, escolhidos num painel de 340x200. Em
+     tela cheia o mesmo número vira faceta visível: 140 pontos numa linha de 1400
+     pixels são 10 pixels por ponto, e a curva mostra os cantos; 520 partículas num
+     painel de 1600x900 são poeira rala. Aqui a contagem acompanha a raiz da área
+     (o dobro de lado = o dobro de pontos), com piso no valor antigo e teto pra não
+     explodir. Quem segura a conta continua sendo a qualidade adaptativa do app:
+     quando a máquina aperta ela baixa a resolução da arte e pula quadro dela. */
+  CV.det = function (m, base, teto) {
+    if (!m || !m.w) return base;
+    var k = Math.sqrt((m.w * m.h) / (340 * 200));
+    return Math.round(Math.max(base, Math.min(teto === undefined ? base * 2.5 : teto, base * k)));
+  };
+
   // rótulo dentro do módulo: escurece sozinho quando o tema é de fundo claro
   function label(c, txt, x, y, align, col, m) {
-    c.font = '9px "SF Mono", ui-monospace, monospace';
+    c.font = CV.font(m, 9);
     c.textAlign = align || 'left';
     var dark = m && CV.isLight(m);
     c.fillStyle = col || (dark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.4)');
@@ -154,18 +566,37 @@
   var GLSL_LIB = [
     'precision highp float;',
     'uniform vec2 u_res; uniform vec2 u_mouse;',
-    'uniform float u_t, u_bass, u_mid, u_high, u_beat, u_hue, u_sat, u_a, u_b, u_gate;',
+    'uniform float u_t, u_bass, u_mid, u_high, u_beat, u_hue, u_sat, u_a, u_b, u_gate, u_lock;',
     'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
     'float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);',
     '  return mix(mix(hash(i), hash(i+vec2(1.,0.)), f.x), mix(hash(i+vec2(0.,1.)), hash(i+vec2(1.,1.)), f.x), f.y); }',
+    /* fbm de 3 oitavas (era 5). O PSY chama fbm 5 vezes POR PIXEL: com 5 oitavas eram
+       25 amostras de ruído por pixel, e num painel grande em Retina isso passa de 50
+       milhões de amostras por quadro. As 2 últimas oitavas só somam detalhe do tamanho
+       de um pixel, que ninguém vê. Corta ~40% da conta de GPU do módulo mais caro. */
     'float fbm(vec2 p){ float v = 0.0, a = 0.5;',
-    '  for(int i=0;i<5;i++){ v += a*noise(p); p = p*2.03 + vec2(1.7); a *= 0.5; } return v; }',
-    'vec3 pal(float x){ vec3 c = 0.5 + 0.5*cos(6.2831*(x + vec3(0.0,0.33,0.67)));',
+    '  for(int i=0;i<3;i++){ v += a*noise(p); p = p*2.03 + vec2(1.7); a *= 0.5; }',
+    '  return v * 1.143; }',
+    'vec3 hue2rgb(float hh){ vec3 k = mod(vec3(5.0,3.0,1.0) + hh*6.0, 6.0);',
+    '  return clamp(min(k, 4.0-k), 0.0, 1.0); }',
+    'vec3 pal(float x){ vec3 rain = 0.5 + 0.5*cos(6.2831*(x + vec3(0.0,0.33,0.67)));',
+    '  vec3 base = hue2rgb(fract(u_hue));',
+    '  float lv = 0.30 + 0.85*fract(x);',
+    '  vec3 solid = mix(base, vec3(1.0), max(0.0, lv-1.0)) * min(1.15, lv);',
+    '  vec3 c = mix(rain, solid, u_lock);',
     '  return mix(vec3(dot(c, vec3(0.299,0.587,0.114))), c, u_sat); }'
   ].join('\n');
 
   CV.glSetup = function (m, fragBody) {
-    var gl = m.canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: true });
+    /* preserveDrawingBuffer FALSE: com true o navegador copia o buffer inteiro a cada
+       quadro pra poder "preservar" (e nenhum shader daqui precisa: todos repintam a tela
+       toda). alpha false tira a mistura com a página. high-performance pede a GPU boa
+       no Mac com duas placas. */
+    var gl = m.canvas.getContext('webgl', {
+      antialias: false, preserveDrawingBuffer: false, alpha: false,
+      depth: false, stencil: false, powerPreference: 'high-performance',
+      desynchronized: true
+    });
     if (!gl) { m.st.gl = null; return; }
     function sh(type, src) {
       var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
@@ -185,7 +616,7 @@
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     m.st.u = {};
-    ['u_res', 'u_mouse', 'u_t', 'u_bass', 'u_mid', 'u_high', 'u_beat', 'u_hue', 'u_sat', 'u_a', 'u_b', 'u_gate'].forEach(function (n) {
+    ['u_res', 'u_mouse', 'u_t', 'u_bass', 'u_mid', 'u_high', 'u_beat', 'u_hue', 'u_sat', 'u_a', 'u_b', 'u_gate', 'u_lock'].forEach(function (n) {
       m.st.u[n] = gl.getUniformLocation(pr, n);
     });
     m.st.gl = gl;
@@ -217,7 +648,9 @@
     // o tempo interno anda no ritmo da música: grave e beat empurram, silêncio congela.
     // a velocidade é suavizada (CV.rate), senão o beat dá um tranco no shader.
     m.st.pt += dt * m.s.speed * CV.rate(m, d, dt, 0.03, 1.1, 0.7);
-    var THEME_HUE = { neon: 0.85, vhs: 0.03, poente: 0.05, gelo: 0.58, vapor: 0.86, floresta: 0.34, rubi: 0.97, oceano: 0.5, ambar: 0.1 };
+    // matiz do shader por tema. Sem entrada aqui, a matiz gira sozinha.
+    var THEME_HUE = { fosforo: 0.34, planta: 0.58, gelo: 0.58, jornal: 0.09, areia: 0.07,
+      ardosia: 0.11, minimeters: 0.97, chumbo: 0.58, tijolo: 0.05, musgo: 0.28 };
     var th = CV.themeOf(m);
     var hue;
     if (m.s.colorMode === 'custom') hue = m.s.hue / 360;
@@ -234,7 +667,8 @@
     gl.uniform1f(m.st.u.u_high, d ? Math.min(1, d.high * m.s.sens * 2.2) : 0);
     gl.uniform1f(m.st.u.u_beat, d ? d.beatPulse : 0);
     gl.uniform1f(m.st.u.u_hue, hue);
-    gl.uniform1f(m.st.u.u_sat, (th === 'mono' && m.s.colorMode !== 'custom') ? 0 : 1);
+    gl.uniform1f(m.st.u.u_sat, ((th === 'mono' || th === 'preto' || th === 'carvao' || th === 'papel') && m.s.colorMode !== 'custom') ? 0 : 1);
+    gl.uniform1f(m.st.u.u_lock, m.s.colorMode === 'custom' ? 1 : 0);
     gl.uniform1f(m.st.u.u_a, extraA || 0);
     gl.uniform1f(m.st.u.u_b, extraB || 0);
     gl.uniform1f(m.st.u.u_gate, gate);
@@ -242,449 +676,818 @@
     return true;
   };
 
+  /* ================= v2.1 · MEDIDORES LISOS =================
+     Pedido do Bruno: os visuais estavam pesados; ele quer clima smooth e pleasing, no
+     molde do MiniMeters, bonito, leve, liso e responsivo. O que pesava, medido numa barra de
+     720x170 em Retina: o espectro fazia 8.711 chamadas de desenho por quadro (um ponto
+     por pixel de DISPOSITIVO, tudo em reta), o osciloscópio 2.896, a onda
+     pintava uma cor nova por coluna (fita de ruído) e o loudness era um bloco azul
+     sólido. Regras desta rodada:
+       1. Um ponto a cada 2 pixels de tela, desenhado em CURVA (quadrática pelo meio de
+          cada par). Menos pontos e mais liso ao mesmo tempo.
+       2. Preenchimento em véu (degradê que some no rodapé), nunca bloco chapado.
+       3. Movimento em segundos: ataque curto pra responder, queda macia pra assentar.
+       4. Texto pequeno e apagado; leitura grande só onde ela é o instrumento (LUFS). */
+
+  /* caminho liso por uma lista de pontos: reta até o meio de cada par, curva no ponto */
+  CV.curva = function (c, X, Y, n) {
+    c.moveTo(X[0], Y[0]);
+    if (n < 3) { for (var k = 1; k < n; k++) c.lineTo(X[k], Y[k]); return; }
+    for (var i = 1; i < n - 1; i++) c.quadraticCurveTo(X[i], Y[i], (X[i] + X[i + 1]) * 0.5, (Y[i] + Y[i + 1]) * 0.5);
+    c.lineTo(X[n - 1], Y[n - 1]);
+  };
+  // cor rgba com cache (a mesma string volta toda vez: o navegador nem relê a cor)
+  var _rgba = new Map();
+  CV.rgba = function (rgb, a) {
+    var qa = Math.round((a === undefined ? 1 : a) * 100);
+    var key = ((rgb[0] | 0) << 16 | (rgb[1] | 0) << 8 | (rgb[2] | 0)) * 101 + qa;
+    var v = _rgba.get(key);
+    if (v === undefined) {
+      v = 'rgba(' + (rgb[0] | 0) + ',' + (rgb[1] | 0) + ',' + (rgb[2] | 0) + ',' + (qa / 100) + ')';
+      if (_rgba.size > 8000) _rgba.clear();
+      _rgba.set(key, v);
+    }
+    return v;
+  };
+  function hslRgb(hh, ss, ll) {
+    hh = ((hh % 360) + 360) % 360; ss /= 100; ll /= 100;
+    var cc = (1 - Math.abs(2 * ll - 1)) * ss, xx = cc * (1 - Math.abs((hh / 60) % 2 - 1)), mm = ll - cc / 2, r, g, b;
+    if (hh < 60) { r = cc; g = xx; b = 0; } else if (hh < 120) { r = xx; g = cc; b = 0; } else if (hh < 180) { r = 0; g = cc; b = xx; }
+    else if (hh < 240) { r = 0; g = xx; b = cc; } else if (hh < 300) { r = xx; g = 0; b = cc; } else { r = cc; g = 0; b = xx; }
+    return [(r + mm) * 255, (g + mm) * 255, (b + mm) * 255];
+  }
+  /* a cor N do medidor: a desenhada pelo tema; se o painel escolheu um mapa, sai do
+     mapa; sem nada, da paleta do tema */
+  function corMedidor(m, idx, posMapa) {
+    var rgb = CV.corRGB(m, idx);
+    if (rgb) return rgb;
+    if (m.s && m.s.cmap && m.s.cmap !== 'auto') return CV.cmapRgb(m.s.cmap, posMapa === undefined ? 0.85 : posMapa);
+    var p = CV.isMono(m) ? [0, 0, CV.isLight(m) ? 12 : 92] : CV.pal(m, idx);
+    return hslRgb(p[0], p[1], p[2]);
+  }
+  function misturaRgb(a, b, t, o) {
+    o = o || [0, 0, 0];   // passe um array pronto no laço de cada quadro: nada de lixo pro coletor
+    o[0] = a[0] + (b[0] - a[0]) * t; o[1] = a[1] + (b[1] - a[1]) * t; o[2] = a[2] + (b[2] - a[2]) * t;
+    return o;
+  }
+  function rotulo(c, m, txt, x, y, align, alpha) {
+    c.font = CV.font(m, 9);
+    c.textAlign = align || 'left';
+    c.fillStyle = CV.gridInk(m, alpha === undefined ? 0.42 : alpha);
+    c.fillText(txt, x, y);
+  }
+
   /* ================= ESPECTRO ================= */
   CV.register('spectrum', {
-    name: 'Espectro', group: 'Estúdio',
-    defaults: defs({ fill: 1, smooth: 1.0, nivelar: 0.7, grade: 1, glow: 8, teto: 1.5 }),
+    name: 'Espectro', group: 'Estúdio', desc: 'Frequências em tempo real, com leitura de nota',
+    defaults: { estilo: 'ambos', smooth: 0.9, tilt: 4.5, fft: 4096, escala: 'log', acende: 1, cmap: 'auto' },
     schema: [
-      { k: 'sens', label: 'Ganho', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'teto', label: 'Teto (folga)', min: 1, max: 3, step: 0.05, def: 1.5 },
-      { k: 'smooth', label: 'Suavidade', min: 0.2, max: 3, step: 0.05, def: 1.0 },
-      { k: 'nivelar', label: 'Nivelar agudos', min: 0, max: 1, step: 0.05, def: 0.7 },
-      { k: 'glow', label: 'Brilho da linha', min: 0, max: 40, step: 1, def: 8 },
-      { k: 'grade', label: 'Grade de Hz', min: 0, max: 1, step: 1, def: 1 },
-      { k: 'fill', label: 'Preenchimento', min: 0, max: 1, step: 1, def: 1 }
+      { k: 'estilo', label: 'Estilo', type: 'seg', opts: [['fft', 'Linha'], ['barras', 'Barras'], ['ambos', 'Os dois']], def: 'ambos' },
+      { k: 'smooth', label: 'Suavidade', type: 'range', min: 0, max: 0.98, step: 0.01, def: 0.9, fmt: 'pct' },
+      { k: 'tilt', label: 'Tilt', type: 'range', min: 0, max: 9, step: 0.25, def: 4.5, fmt: 'db' },
+      { k: 'fft', label: 'FFT', type: 'seg', opts: [[1024, '1k'], [2048, '2k'], [4096, '4k'], [8192, '8k'], [16384, '16k']], def: 4096 },
+      { k: 'escala', label: 'Escala', type: 'seg', opts: [['mel', 'Mel'], ['log', 'Log'], ['lin', 'Linear']], def: 'log' },
+      { k: 'acende', label: 'Brilho na batida', type: 'seg', opts: [[0, 'Não'], [1, 'Sim']], def: 1 },
+      { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
     ],
-    init: function (m) { m.st.vals = []; m.st.slow = []; m.st.peaks = []; },
+    init: function (m) { m.st.v = null; },
     draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
+      var c = m.ctx, w = m.w, h = m.h, s = m.s, st = m.st;
       c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var N = 220, f = d.freq, n = f.length, i;
-      if (m.st.vals.length !== N) {
-        m.st.vals = new Array(N).fill(0);
-        m.st.slow = new Array(N).fill(0);
-        m.st.peaks = new Array(N).fill(0);
+      if (!d || !d.spectrum) return;
+      var FMIN = 20, FMAX = 20000;
+      var dbL = d.spectrum(s.fft, 'l'), nb = dbL.length, binHz = d.specBinHz;
+      var dbR = d.spectrum(s.fft, 'r');
+      var N = Math.max(64, Math.min(1000, Math.round(w / 2)));
+      if (!st.v || st.v.length !== N) {
+        st.v = new Float32Array(N); st.v2 = new Float32Array(N); st.raw = new Float32Array(N);
+        st.X = new Float32Array(N); st.Y = new Float32Array(N); st.Y2 = new Float32Array(N); st.Yf = new Float32Array(N);
       }
-      var FMIN = 26, FMAX = 18000, binHz = 22050 / n;
-      function xToFreq(x) { return FMIN * Math.pow(FMAX / FMIN, x / w); }
-      function freqToX(fr) { return Math.log(fr / FMIN) / Math.log(FMAX / FMIN) * w; }
-      // magnitude interpolada entre bins: tira o serrilhado, curva mais macia
-      function magAt(fr) {
-        var pos = fr / binHz;
-        var i0 = pos | 0; if (i0 < 0) i0 = 0; if (i0 > n - 1) i0 = n - 1;
-        var i1 = i0 + 1 < n ? i0 + 1 : i0, fa = pos - i0;
-        return (f[i0] * (1 - fa) + f[i1] * fa) / 255;
+      var v = st.v, v2 = st.v2, raw = st.raw, X = st.X, Y = st.Y, Y2 = st.Y2, Yf = st.Yf, i;
+
+      /* EIXO: cada ponto cobre um pedaço do espectro (lo..hi). Onde o pedaço tem mais
+         de uma raia, vale o MAIOR (o pico não some no agudo); onde não tem, interpola. */
+      var ax = st.ax, sig = N + '|' + nb + '|' + binHz.toFixed(4) + '|' + s.escala + '|' + s.tilt + '|' + w;
+      if (!ax || ax.sig !== sig) {
+        ax = st.ax = { sig: sig, pos: new Float32Array(N), lo: new Int32Array(N), hi: new Int32Array(N), tilt: new Float32Array(N), hz: new Float32Array(N) };
+        var mMin = 2595 * Math.log10(1 + FMIN / 700), mMax = 2595 * Math.log10(1 + FMAX / 700);
+        var freqDe = function (u) {
+          if (s.escala === 'lin') return FMIN + (FMAX - FMIN) * u;
+          if (s.escala === 'mel') return 700 * (Math.pow(10, (mMin + (mMax - mMin) * u) / 2595) - 1);
+          return FMIN * Math.pow(FMAX / FMIN, u);
+        };
+        for (i = 0; i < N; i++) {
+          var u = i / (N - 1), fr = freqDe(u);
+          var fa = freqDe(Math.max(0, u - 0.5 / (N - 1))), fb = freqDe(Math.min(1, u + 0.5 / (N - 1)));
+          ax.hz[i] = fr; ax.pos[i] = fr / binHz;
+          ax.lo[i] = Math.max(0, Math.floor(fa / binHz)); ax.hi[i] = Math.min(nb - 1, Math.ceil(fb / binHz));
+          // tilt em dB por oitava a partir de 1kHz, e o subgrave abaixo de 45Hz cai 14dB/oitava (rumble)
+          var sub = fr < 45 ? -14 * Math.log(45 / fr) / Math.LN2 : 0;
+          ax.tilt[i] = s.tilt * Math.log(fr / 1000) / Math.LN2 + sub;
+          X[i] = u * w;
+        }
+        st.grade = null;
       }
-      // duas cores estilo analisador: principal quente + secundária fria
-      var main, mainHi, sec;
-      if (s.colorMode === 'custom') {
-        main = [s.hue, 90, 56]; mainHi = [s.hue, 96, 66]; sec = [(s.hue + 205) % 360, 82, 60];
-      } else {
-        var cM = CV.pal(m, 0, t), cS = CV.pal(m, 2, t);
-        main = [cM[0], cM[1], 56]; mainHi = [cM[0], Math.min(100, cM[1] + 8), 66]; sec = [cS[0], cS[1], 60];
-      }
-      var att = Math.min(1, 40 * dt / s.smooth), rel = Math.min(1, 3.6 * dt / s.smooth);
-      var attS = att * 0.5, relS = rel * 0.45;
-      var baseH = h * 0.97;               // usa quase toda a altura do painel
-      var teto = s.teto || 1.5;           // folga acima do sinal: a curva não vive no talo
-      /* limite macio: em vez de cortar reto em 1 (que achata o topo e come a dinâmica),
-         a curva desacelera perto do teto e só encosta nele assintoticamente. */
-      function soft(v) {
-        var K = 0.72;
-        if (v <= K) return v;
-        return K + (1 - Math.exp(-(v - K) * 2.6)) * (1 - K);
-      }
-      for (i = 0; i < N; i++) {
-        var fr = FMIN * Math.pow(FMAX / FMIN, i / (N - 1));
-        var tilt = 1 + (Math.min(3.5, Math.pow(fr / 90, 0.32)) - 1) * s.nivelar;
-        var v = soft(Math.pow(magAt(fr), 1.25) * s.sens * tilt / teto);
-        var cur = m.st.vals[i];
-        m.st.vals[i] = cur + (v - cur) * (v > cur ? att : rel);
-        var cs = m.st.slow[i];
-        m.st.slow[i] = cs + (v - cs) * (v > cs ? attS : relS);
-        m.st.peaks[i] = Math.max(m.st.vals[i], m.st.peaks[i] - dt * 0.25);
-      }
-      // grade de frequência por décadas (100Hz / 1kHz / 10kHz marcados), como no MiniMeters
-      if (s.grade >= 0.5) {
-        var ticks = [30, 40, 50, 60, 80, 100, 200, 300, 400, 500, 600, 800, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 15000];
-        var labels = { 100: '100Hz', 1000: '1kHz', 10000: '10kHz' };
-        for (var g2 = 0; g2 < ticks.length; g2++) {
-          var fq = ticks[g2]; if (fq < FMIN || fq > FMAX) continue;
-          var gx = freqToX(fq), strong = labels[fq];
-          c.strokeStyle = strong ? CV.gridInk(m, 0.16) : CV.gridInk(m, 0.055);
-          c.lineWidth = 1;
-          c.beginPath(); c.moveTo(gx, 0); c.lineTo(gx, h); c.stroke();
-          if (strong) label(c, labels[fq], gx + 3, 11, 'left', null, m);
+      // janela vertical medida contra o vídeo do MiniMeters: -66 a -14 dBFS
+      var piso = -66, span = 52;
+      var tUp = 0.016, tDn = 0.06 + s.smooth * 0.86;
+      var kUp = 1 - Math.exp(-dt / tUp), kDn = 1 - Math.exp(-dt / tDn);
+      var maxV = 0, maxI = 0;
+      for (var cc = 0; cc < 2; cc++) {
+        var src = cc === 0 ? dbL : dbR, alvo = cc === 0 ? v : v2;
+        for (i = 0; i < N; i++) {
+          var lo = ax.lo[i], hi = ax.hi[i], dbv;
+          if (hi > lo + 1) { dbv = -200; for (var q = lo; q <= hi; q++) if (src[q] > dbv) dbv = src[q]; }
+          else {
+            /* entre duas raias (o grave, onde há mais ponto que raia): Catmull-Rom em
+               vez de reta. A reta deixava um bico em cada raia e o grave saía poligonal. */
+            var p0 = ax.pos[i], i0 = p0 | 0; if (i0 > nb - 3) i0 = nb - 3; if (i0 < 1) i0 = 1;
+            var f = p0 - i0, ya = src[i0 - 1], yb = src[i0], yc = src[i0 + 1], yd = src[i0 + 2];
+            dbv = yb + 0.5 * f * (yc - ya + f * (2 * ya - 5 * yb + 4 * yc - yd + f * (3 * (yb - yc) + yd - ya)));
+          }
+          var nv = (dbv + ax.tilt[i] - piso) / span;
+          if (nv < 0) nv = 0; else if (nv > 0.86) nv = 0.86 + 0.14 * Math.tanh((nv - 0.86) / 0.14);
+          raw[i] = nv;
+        }
+        // 1-2-1 entre vizinhos: tira o dente de um pixel só, mantém a altura
+        var ant = raw[0];
+        for (i = 0; i < N; i++) {
+          var atual = raw[i], prox = i < N - 1 ? raw[i + 1] : atual;
+          var sm = (ant + 2 * atual + prox) * 0.25;
+          ant = atual;
+          alvo[i] += (sm - alvo[i]) * (sm > alvo[i] ? kUp : kDn);
+          // a nota do canto procura só a região musical: pico em 11kHz é chimbal, não nota
+          if (cc === 0 && alvo[i] > maxV && ax.hz[i] >= 30 && ax.hz[i] <= 5000) { maxV = alvo[i]; maxI = i; }
         }
       }
-      var X = function (k) { return k / (N - 1) * w; };
-      function path(arr, close) {
+
+      var topo = h * 0.96;
+      for (i = 0; i < N; i++) { Y[i] = h - v[i] * topo; Y2[i] = h - v2[i] * topo; Yf[i] = h - Math.min(v[i], v2[i]) * topo; }
+      var corL = corMedidor(m, 0, 0.88), corR = corMedidor(m, 1, 0.55), sombra = CV.corRGB(m, 2) || misturaRgb(corL, [0, 0, 0], 0.6);
+
+      /* BRILHO NA BATIDA: cada faixa se compara com a própria média lenta, e o que
+         passou dela acende. A v2.0 pintava isso em 240 a 640 faixas, e a borda entre
+         uma e outra virava listra vertical. Agora são 48 paradas de um degradê só:
+         a luz escorre de uma faixa pra outra, sem degrau. */
+      var NB = 48, lz = null, algum = 0, b;
+      if (s.acende) {
+        var med = st.med || (st.med = new Float32Array(NB));
+        lz = st.lz || (st.lz = new Float32Array(NB));
+        var kM = 1 - Math.exp(-dt / 0.6), kL = Math.exp(-dt / 0.22);
+        for (b = 0; b < NB; b++) {
+          var ia = (b * N / NB) | 0, ib = ((b + 1) * N / NB) | 0, top = 0;
+          for (i = ia; i < ib; i++) if (v[i] > top) top = v[i];
+          var sobe = Math.max(0, top - med[b]);
+          med[b] += (top - med[b]) * kM;
+          lz[b] = Math.max(lz[b] * kL, Math.min(1, sobe * 4 * Math.pow(top, 1.2)));
+          if (lz[b] > 0.04) algum = 1;
+        }
+      }
+
+      /* PREENCHIMENTO PELA ALTURA, o do MiniMeters: debaixo de cada trecho a cor vai
+         da sombra (curva baixa) ao vivo (curva alta), então o que toca forte acende e
+         o resto fica escuro. Depois um degradê APAGA o preenchimento em direção ao
+         rodapé (destination-out: até ali o painel só tem ele). A v2.0 era um bloco
+         rosa de 30% a 92% com listras por cima; aqui o mais aceso fica em 38%. */
+      if (s.estilo !== 'fft') {
+        var forte = s.estilo === 'barras', tmpC = st.tmpC || (st.tmpC = [0, 0, 0]);
+        var gh = c.createLinearGradient(0, 0, w, 0);
+        for (b = 0; b < NB; b++) {
+          var ja = (b * N / NB) | 0, jb = ((b + 1) * N / NB) | 0, alto = 0;
+          for (i = ja; i < jb; i++) { var mn = forte ? v[i] : v[i] < v2[i] ? v[i] : v2[i]; if (mn > alto) alto = mn; }
+          var u2 = Math.min(1, alto / 0.86);
+          u2 = Math.round(u2 * u2 * 40) / 40;
+          var la = lz && lz[b] > 0.03 ? Math.round(lz[b] * 20) / 20 : 0;
+          var a2 = forte ? 0.32 + 0.5 * u2 + 0.18 * la : 0.07 + 0.31 * u2 + 0.24 * la;
+          gh.addColorStop((b + 0.5) / NB, CV.rgba(misturaRgb(sombra, corL, Math.min(1, u2 + la * 0.6), tmpC), a2));
+        }
         c.beginPath();
-        if (close) { c.moveTo(0, h); c.lineTo(0, h - arr[0] * baseH); }
-        else c.moveTo(0, h - arr[0] * baseH);
-        for (var k = 0; k < N - 1; k++) {
-          var x0 = X(k), x1 = X(k + 1);
-          var y0 = h - arr[k] * baseH, y1 = h - arr[k + 1] * baseH;
-          c.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+        CV.curva(c, X, forte ? Y : Yf, N);   // Barras não tem a curva da direita: enche até a da esquerda
+        c.lineTo(w, h); c.lineTo(0, h); c.closePath();
+        c.fillStyle = gh;
+        c.fill();
+        var fsig = h + '|' + forte;
+        if (st.fsig !== fsig) {
+          var gv = c.createLinearGradient(0, 0, 0, h);
+          gv.addColorStop(0, 'rgba(0,0,0,0)'); gv.addColorStop(0.4, 'rgba(0,0,0,0.15)');
+          gv.addColorStop(1, forte ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.8)');
+          st.gv = gv; st.fsig = fsig;
         }
-        c.lineTo(w, h - arr[N - 1] * baseH);
-        if (close) { c.lineTo(w, h); c.closePath(); }
+        c.globalCompositeOperation = 'destination-out';
+        c.fillStyle = st.gv;
+        c.fillRect(0, 0, w, h);
+        c.globalCompositeOperation = 'source-over';
       }
+
+      // grade discreta: décadas com rótulo, intermediárias quase sumidas
+      var gk = st.grade;
+      if (!gk) {
+        gk = st.grade = { fraca: [], forte: [] };
+        var marcas = [[50, 0], [100, '100'], [200, 0], [500, 0], [1000, '1k'], [2000, 0], [5000, 0], [10000, '10k']];
+        for (var g2 = 0; g2 < marcas.length; g2++) {
+          var fq = marcas[g2][0], gx = -1;
+          for (var q2 = 0; q2 < N - 1; q2++) if (ax.hz[q2] <= fq && ax.hz[q2 + 1] >= fq) { gx = X[q2] + (X[q2 + 1] - X[q2]) * (fq - ax.hz[q2]) / (ax.hz[q2 + 1] - ax.hz[q2]); break; }
+          if (gx < 0) continue;
+          gx = Math.round(gx) + 0.5;
+          if (marcas[g2][1]) gk.forte.push([gx, marcas[g2][1]]); else gk.fraca.push(gx);
+        }
+      }
+      c.lineWidth = 1;
+      c.strokeStyle = CV.gridInk(m, 0.035);
+      c.beginPath();
+      for (i = 0; i < gk.fraca.length; i++) { c.moveTo(gk.fraca[i], 0); c.lineTo(gk.fraca[i], h); }
+      c.stroke();
+      c.strokeStyle = CV.gridInk(m, 0.075);
+      c.beginPath();
+      for (i = 0; i < gk.forte.length; i++) { c.moveTo(gk.forte[i][0], 0); c.lineTo(gk.forte[i][0], h); }
+      c.stroke();
+      if (h > 60) for (i = 0; i < gk.forte.length; i++) rotulo(c, m, gk.forte[i][1], gk.forte[i][0] + 4, CV.fs(m, 9) + 3, 'left', 0.34);
+
+      // o traço da esquerda clareia onde a faixa acendeu
+      var luzL = null;
+      if (algum) {
+        var ext = CV.isLight(m) ? [0, 0, 0] : [255, 255, 255];
+        luzL = c.createLinearGradient(0, 0, w, 0);
+        var tmpL = st.tmpL || (st.tmpL = [0, 0, 0]);
+        for (b = 0; b < NB; b++) luzL.addColorStop((b + 0.5) / NB, CV.rgba(misturaRgb(corL, ext, Math.round(lz[b] * 20) / 20 * 0.5, tmpL), 1));
+      }
+
+      // as duas curvas: direita por baixo, esquerda por cima
       c.lineJoin = 'round';
-      // 1) secundária (fria): fio fino atrás, sem gradientão
-      c.strokeStyle = CV.hsla(sec, 0.5); c.lineWidth = 1; path(m.st.slow, false); c.stroke();
-      // 2) principal (quente): preenchimento baixo e chapado (peso visual leve)
-      if (s.fill >= 0.5) {
-        path(m.st.vals, true);
-        var mg = c.createLinearGradient(0, h, 0, h * 0.12);
-        mg.addColorStop(0, CV.hsla(main, 0.18));
-        mg.addColorStop(0.6, CV.hsla(main, 0.05));
-        mg.addColorStop(1, CV.hsla(main, 0));
-        c.fillStyle = mg; c.fill();
+      c.lineWidth = 1.15;
+      if (s.estilo !== 'barras') {
+        c.strokeStyle = CV.rgba(corR, 0.8);
+        c.beginPath(); CV.curva(c, X, Y2, N); c.stroke();
       }
-      // 3) pico-hold: fio fino contínuo no lugar dos pontos soltos
-      c.strokeStyle = CV.hsla(mainHi, 0.38); c.lineWidth = 1; path(m.st.peaks, false); c.stroke();
-      // 4) linha principal nítida, só um respiro de brilho
-      c.shadowBlur = CV.isLight(m) ? 0 : s.glow * 0.4; c.shadowColor = CV.hsla(mainHi, 1);
-      c.strokeStyle = CV.hsla(mainHi, 1); c.lineWidth = 1.3; path(m.st.vals, false); c.stroke();
-      c.shadowBlur = 0;
-      // 5) régua de base fina
-      c.strokeStyle = CV.gridInk(m, 0.09); c.lineWidth = 1;
-      c.beginPath(); c.moveTo(0, h - 0.5); c.lineTo(w, h - 0.5); c.stroke();
-      // hover: dB | Hz | nota + cents
+      c.strokeStyle = luzL || CV.rgba(corL, s.estilo === 'barras' ? 0.95 : 1);
+      if (luzL) c.lineWidth = 1.4;
+      c.beginPath(); CV.curva(c, X, Y, N); c.stroke();
+
+      // leitura: no hover segue o mouse; parado, só a nota do pico, pequena no canto
       if (m.mouse && m.mouse.over) {
-        var mxx = m.mouse.x, fr2 = xToFreq(mxx);
-        var bin2 = Math.min(n - 1, Math.round(fr2 / binHz));
-        var db = d.freq[bin2] > 0 ? (20 * Math.log10(d.freq[bin2] / 255)).toFixed(2) : '-∞';
-        c.strokeStyle = CV.isLight(m) ? 'rgba(20,20,18,0.55)' : 'rgba(240,239,233,0.5)';
-        c.beginPath(); c.moveTo(mxx, 0); c.lineTo(mxx, h); c.stroke();
-        var txt = db + 'dB · ' + CV.fmtHz(fr2) + ' · ' + CV.noteCents(fr2);
-        c.font = '10px "SF Mono", ui-monospace, monospace';
-        var tw = c.measureText(txt).width;
-        var tx = Math.min(w - tw - 10, Math.max(6, mxx + 8));
-        var ty = Math.max(18, Math.min(h - 6, m.mouse.y));
-        c.fillStyle = CV.isLight(m) ? 'rgba(245,243,236,0.92)' : 'rgba(7,7,11,0.88)';
-        c.fillRect(tx - 4, ty - 22, tw + 8, 16);
-        c.fillStyle = CV.isLight(m) ? '#141412' : '#f0efe9';
+        var ri = Math.max(0, Math.min(N - 1, Math.round(m.mouse.x / w * (N - 1))));
+        var fr2 = ax.hz[ri], bin2 = Math.max(0, Math.min(nb - 1, Math.round(fr2 / binHz)));
+        c.strokeStyle = CV.gridInk(m, 0.22); c.lineWidth = 1;
+        c.beginPath(); c.moveTo(Math.round(X[ri]) + 0.5, 0); c.lineTo(Math.round(X[ri]) + 0.5, h); c.stroke();
+        var txt = (dbL[bin2] > -119 ? dbL[bin2].toFixed(1) : '-∞') + ' dB  ' + CV.fmtHz(fr2) + '  ' + CV.noteCents(fr2);
+        c.font = CV.font(m, 9.5);
+        var tw = c.measureText(txt).width, fsz = CV.fs(m, 9.5);
+        var tx = Math.min(w - tw - 10, Math.max(6, X[ri] + 8)), ty = Math.max(fsz * 2.6, Math.min(h - 6, m.mouse.y));
+        c.fillStyle = CV.isLight(m) ? 'rgba(250,248,242,0.92)' : 'rgba(10,10,12,0.78)';
+        c.fillRect(tx - 5, ty - fsz - 4, tw + 10, fsz + 8);
+        c.fillStyle = CV.isLight(m) ? '#141412' : '#ececec';
         c.textAlign = 'left';
-        c.fillText(txt, tx, ty - 10);
+        c.fillText(txt, tx, ty);
+      } else if (maxV > 0.12 && h > 70) {
+        // a nota do pico mora na segunda linha: na primeira ela batia no rótulo do 10k
+        var fp = ax.hz[maxI];
+        rotulo(c, m, CV.noteName(fp) + '  ' + CV.fmtHz(fp), w - 8, CV.fs(m, 9) * 2 + 7, 'right', 0.45);
       }
     }
   });
 
-  /* ================= ONDA ROLANTE ================= */
+  /* ================= ONDA ================= */
+  /* TRÊS BANDAS EM CAMADAS, como a onda multibanda do MiniMeters: o grave por trás,
+     o médio no meio, o agudo na frente, cada um com a própria altura. A v2.0 pintava
+     uma cor por coluna a partir do "brilho" do som e a faixa virava ruído colorido.
+     Agora a cor quer dizer uma coisa só (qual banda) e a forma é lisa. */
+  var ONDA_BANDA = { lo: [253, 86, 72], mid: [104, 211, 116], hi: [77, 169, 252] };
   CV.register('wavescroll', {
-    name: 'Onda rolante', group: 'Estúdio',
-    defaults: defs({ smooth: 1.2, glow: 10 }),
+    name: 'Onda', group: 'Estúdio', buffered: true, desc: 'A forma de onda passando, em três bandas, um canal por faixa',
+    defaults: { ch1: 'l', ch2: 'r', cor: 'auto', speed: 1, sens: 1, cmap: 'auto' },
     schema: [
-      { k: 'sens', label: 'Ganho', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'speed', label: 'Rolagem', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'glow', label: 'Brilho', min: 0, max: 40, step: 1, def: 10 },
-      { k: 'smooth', label: 'Suavidade', min: 0.2, max: 3, step: 0.05, def: 1.2 }
+      { k: 'ch1', label: 'Canal 1', type: 'seg', opts: [['l', 'Esq'], ['r', 'Dir'], ['m', 'Mid'], ['s', 'Side']], def: 'l' },
+      { k: 'ch2', label: 'Canal 2', type: 'seg', opts: [['off', 'Off'], ['l', 'Esq'], ['r', 'Dir'], ['m', 'Mid'], ['s', 'Side']], def: 'r' },
+      { k: 'cor', label: 'Cor', type: 'seg', opts: [['auto', 'Do tema'], ['banda', 'Bandas'], ['fixa', 'Uma cor'], ['mapa', 'Mapa']], def: 'auto' },
+      { k: 'speed', label: 'Rolagem', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
+      { k: 'cmap', label: 'Mapa', type: 'select', opts: CV.CMAP_LIST, def: 'auto', when: ['cor', 'mapa'] }
     ],
-    init: function (m) { m.st.emx = 0; m.st.emn = 0; m.st.erms = 0; },
+    init: function (m) { m.st.f = []; },
     draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
+      var c = m.ctx, w = m.w, h = m.h, s = m.s, st = m.st;
       var buf = offscreen(m, 'buf'), bc = buf.getContext('2d');
-      if (!d) { c.clearRect(0, 0, w, h); return; }
-      var dx = Math.max(1, Math.round(1.4 * s.speed * (m.dpr || 1)));
-      bc.globalCompositeOperation = 'copy';
-      bc.drawImage(buf, -dx, 0);
-      CV.blend(m, bc, false);
-      var td = d.time, mn = 0, mx = 0, i;
-      for (i = 0; i < td.length; i++) { if (td[i] < mn) mn = td[i]; if (td[i] > mx) mx = td[i]; }
-      mn *= s.sens; mx *= s.sens;
-      // envelope suavizado
-      var att = Math.min(1, 32 * dt / s.smooth), rel = Math.min(1, 4 * dt / s.smooth);
-      m.st.emx += (mx - m.st.emx) * (mx > m.st.emx ? att : rel);
-      m.st.emn += (mn - m.st.emn) * (mn < m.st.emn ? att : rel);
-      var rms = Math.min(1, d.rms * 2.6 * s.sens);
-      m.st.erms += (rms - m.st.erms) * (rms > m.st.erms ? att : rel);
-      // cor pelo conteúdo, puxada do tema: grave numa cor do tema, agudo noutra
-      var bal = Math.min(1, Math.max(0, d.centroid * 3.2 - 0.12));
-      if (m.st.hueSm === undefined) m.st.hueSm = 0.5;
-      m.st.hueSm += (bal - m.st.hueSm) * Math.min(1, dt * 6);
-      var cLo, cHiT;
-      if (s.colorMode === 'custom') { cLo = [s.hue, 90, 55]; cHiT = [(s.hue + 60) % 360, 90, 55]; }
-      else { cLo = CV.pal(m, 0, t); cHiT = CV.pal(m, 2, t); }
-      var dh = ((((cHiT[0] - cLo[0]) % 360) + 540) % 360) - 180; // menor caminho no círculo de cor
-      var hue = ((cLo[0] + dh * m.st.hueSm) % 360 + 360) % 360;
-      var satW = cLo[1] + (cHiT[1] - cLo[1]) * m.st.hueSm;
-      var lite = 46 + d.rms * 80 + d.high * 34;
-      var col = [hue, satW, Math.min(72, lite)];
-      var colHi = [hue, Math.max(0, satW - 12), Math.min(94, lite + 26)];
-      var H = buf.height, mid = H / 2, amp = H * 0.48, dpr = m.dpr || 1;
-      var x = buf.width - dx;
-      bc.clearRect(x, 0, dx, H);
-      var y0 = mid - Math.min(1, m.st.emx) * amp;   // topo da onda
-      var y1 = mid - Math.max(-1, m.st.emn) * amp;   // base da onda
-      // 1) brilho externo sutil (bloom), pra não ficar chapado
-      if (s.glow > 0) {
-        var gpx = Math.min(H * 0.1, s.glow * 0.5 * dpr);
-        CV.blend(m, bc);
-        var og = bc.createLinearGradient(0, y0 - gpx, 0, y1 + gpx);
-        og.addColorStop(0, CV.hsla(col, 0));
-        og.addColorStop(0.5, CV.hsla(col, 0.07));
-        og.addColorStop(1, CV.hsla(col, 0));
-        bc.fillStyle = og;
-        bc.fillRect(x, y0 - gpx, dx, (y1 - y0) + gpx * 2);
-        CV.blend(m, bc, false);
+      if (!d || !d.timeL) { c.clearRect(0, 0, w, h); return; }
+      if (!st.f) st.f = [];
+      var chans = [s.ch1];
+      if (s.ch2 && s.ch2 !== 'off') chans.push(s.ch2);
+      var lanes = chans.length;
+      var dx = CV.passo(m, 1.4 * s.speed * (m.dpr || 1), dt);
+      st._dtA = (st._dtA || 0) + dt;
+      if (dx >= 1) {
+        var dtCol = Math.min(0.1, st._dtA); st._dtA = 0;
+        bc.globalCompositeOperation = 'source-over';
+        var x = CV.scrollRing.next(m, 'buf', buf, bc, dx);
+        var H = buf.height, laneH = H / lanes, sr = d.sr || 48000;
+        var L = d.timeL, R = d.timeR, n = L.length;
+        var fresh = Math.min(n, Math.max(48, Math.round(sr * dtCol)));
+        var aLo = Math.exp(-2 * Math.PI * 220 / sr), aHi = Math.exp(-2 * Math.PI * 2400 / sr);
+        var modo = s.cor === 'auto' ? (CV.themeOf(m) === 'minimeters' ? 'banda' : 'tema') : s.cor;
+        var cLo, cMid, cHi, cUma;
+        if (modo === 'banda') { cLo = CV.rgba(ONDA_BANDA.lo, 1); cMid = CV.rgba(ONDA_BANDA.mid, 0.92); cHi = CV.rgba(ONDA_BANDA.hi, 0.92); }
+        else if (modo === 'tema') {
+          var base = corMedidor(m, 0);
+          cLo = CV.rgba(base, 0.3); cMid = CV.rgba(base, 0.58); cHi = CV.rgba(base, 0.95);
+        } else if (modo === 'fixa') cUma = CV.rgba(corMedidor(m, 0), 0.9);
+        var g = s.sens, porCol = fresh / dx;
+        for (var li = 0; li < lanes; li++) {
+          var ch = chans[li], fs = st.f[li] || (st.f[li] = { lo: 0, hi: 0 });
+          var mid = laneH * (li + 0.5), amp = laneH * 0.46;
+          for (var cx = 0; cx < dx; cx++) {
+            var a0 = n - fresh + Math.floor(cx * porCol), a1 = n - fresh + Math.floor((cx + 1) * porCol);
+            if (a1 <= a0) a1 = a0 + 1;
+            var pk = 0, pMid = 0, pHi = 0, flo = fs.lo, fhi = fs.hi;
+            for (var i = a0; i < a1; i++) {
+              var a = L[i], b = R[i];
+              var smp = ch === 'l' ? a : ch === 'r' ? b : ch === 'm' ? (a + b) * 0.5 : (a - b) * 0.5;
+              flo = smp + (flo - smp) * aLo;
+              fhi = smp + (fhi - smp) * aHi;
+              // grave = abaixo de 220Hz, médio = 220 a 2400Hz, agudo = o resto
+              var vm = fhi - flo, vh = smp - fhi, va = smp < 0 ? -smp : smp;
+              if (vm < 0) vm = -vm; if (vh < 0) vh = -vh;
+              if (va > pk) pk = va; if (vm > pMid) pMid = vm; if (vh > pHi) pHi = vh;
+            }
+            fs.lo = flo; fs.hi = fhi;
+            var px = x + cx;
+            if (modo === 'banda' || modo === 'tema') {
+              var hl = Math.min(1, pk * g) * amp, hm = Math.min(1, pMid * g * 1.1) * amp, hh = Math.min(1, pHi * g * 0.9) * amp;
+              bc.fillStyle = cLo; bc.fillRect(px, mid - hl, 1, hl * 2 + 1);
+              bc.fillStyle = cMid; bc.fillRect(px, mid - hm, 1, hm * 2 + 1);
+              bc.fillStyle = cHi; bc.fillRect(px, mid - hh, 1, hh * 2 + 1);
+            } else {
+              var ht = Math.min(1, pk * g) * amp;
+              bc.fillStyle = modo === 'mapa' ? CV.cmap(m, 0.2 + Math.min(1, pk * g) * 0.8, 1) : cUma;
+              bc.fillRect(px, mid - ht, 1, ht * 2 + 1);
+            }
+          }
+        }
       }
-      // 2) corpo cheio: waveform sólida, bordas só levemente macias (como no MiniMeters)
-      var g = bc.createLinearGradient(0, y0, 0, y1);
-      g.addColorStop(0, CV.hsla(col, 0.55));
-      g.addColorStop(0.12, CV.hsla(col, 0.95));
-      g.addColorStop(0.5, CV.hsla(col, 1));
-      g.addColorStop(0.88, CV.hsla(col, 0.95));
-      g.addColorStop(1, CV.hsla(col, 0.55));
-      bc.fillStyle = g;
-      bc.fillRect(x, y0, dx, Math.max(1, y1 - y0));
-      // 3) núcleo RMS mais claro (leitura de energia)
-      var ry = mid - m.st.erms * amp, rh = Math.max(1, m.st.erms * amp * 2);
-      bc.fillStyle = CV.hsla(colHi, 0.8);
-      bc.fillRect(x, ry, dx, rh);
-      // 4) fios claros no meio, topo e base: rolando viram contorno nítido
-      var lw = Math.max(1, dpr);
-      CV.blend(m, bc);
-      bc.fillStyle = CV.hsla(colHi, 0.85);
-      bc.fillRect(x, y0, dx, lw);
-      bc.fillRect(x, y1 - lw, dx, lw);
-      bc.fillStyle = CV.hsla(colHi, 0.5);
-      bc.fillRect(x, mid - lw * 0.5, dx, lw);
-      CV.blend(m, bc, false);
-      c.clearRect(0, 0, w, h);
-      c.drawImage(buf, 0, 0, buf.width, buf.height, 0, 0, w, h);
+      // rola com fração de pixel: sem isso a faixa anda aos pulinhos de 1 e 2 pixels
+      CV.scrollRing.blit(m, 'buf', buf, c, w, h, st._pa || 0);
+      c.fillStyle = CV.gridInk(m, 0.06);
+      for (var z = 0; z < lanes; z++) c.fillRect(0, Math.round(h * (z + 0.5) / lanes), w, 1);
+      if (lanes > 1) { c.fillStyle = CV.gridInk(m, 0.035); c.fillRect(0, Math.round(h / 2), w, 1); }
     }
   });
 
   /* ================= LOUDNESS ================= */
+  /* Duas barras (CURTO e MÉDIO), régua à esquerda e o número do LUFS médio ao lado.
+     O bloco sólido de cor saiu: o número fica na cor do medidor, grande, sem caixa.
+     A leitura é a mesma da v2.0. */
   CV.register('loudness', {
-    name: 'Loudness', group: 'Estúdio',
-    defaults: defs({ glow: 8, alvo: -14 }),
+    name: 'Loudness', group: 'Estúdio', desc: 'LUFS curto e médio pela norma BS.1770',
+    defaults: { alvo: -14, barras: 2, cmap: 'auto' },
     schema: [
-      { k: 'glow', label: 'Brilho', min: 0, max: 40, step: 1, def: 8 },
-      { k: 'alvo', label: 'Alvo (LUFS)', min: -30, max: -6, step: 1, def: -14 }
+      { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
     ],
-    init: function (m) {},
+    init: function (m) { m.st.sb = []; m.st.ph = []; m.st.pt = []; },
     draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
+      var c = m.ctx, w = m.w, h = m.h, st = m.st;
       c.clearRect(0, 0, w, h);
       if (!d) return;
-      var lufsRaw = d.lufsApprox ? d.lufsApprox() : -70;
-      // número calmo de ler: sobe rápido, desce devagar (integração tipo medidor de estúdio)
-      if (m.st.lufsSm === undefined) m.st.lufsSm = lufsRaw;
-      // número estável: sobe com calma, desce bem devagar (não pula em 1 segundo)
-      var kL = Math.min(1, dt * (lufsRaw > m.st.lufsSm ? 2.2 : 0.45));
-      m.st.lufsSm += (lufsRaw - m.st.lufsSm) * kL;
-      var lufs = m.st.lufsSm;
-      var avg = d.lufsAvgVal !== undefined ? d.lufsAvgVal : -70;
-      var LMIN = -36, LMAX = 0;
-      function toY(v) { return 8 + (1 - (Math.max(LMIN, Math.min(LMAX, v)) - LMIN) / (LMAX - LMIN)) * (h - 52); }
-      var col = CV.pal(m, 0, t), colHot = CV.pal(m, 3, t);
-      var barW = Math.min(30, w * 0.3), x = w / 2 - barW / 2;
-      // trilho e marcas da régua
-      c.fillStyle = CV.gridInk(m, 0.05);
-      c.fillRect(x, 8, barW, h - 52);
-      [-30, -23, -14, -9, -6, -3].forEach(function (mk) {
-        var y = toY(mk);
-        c.fillStyle = CV.gridInk(m, 0.14);
-        c.fillRect(x - 4, y, barW + 8, 1);
-        label(c, String(mk), x - 8, y + 3, 'right', null, m);
+      if (!st.sb) { st.sb = []; st.ph = []; st.pt = []; }
+      var vM = d.lufsM !== undefined ? d.lufsM : -70, vS = d.lufsS !== undefined ? d.lufsS : -70;
+      var vI = d.lufsAvgVal !== undefined ? d.lufsAvgVal : -70;
+      if (st.sm === undefined) st.sm = vI;
+      st.sm += (vI - st.sm) * (1 - Math.exp(-dt / (vI > st.sm ? 0.09 : 0.45)));
+      var LMIN = -50, LMAX = 0, fs = CV.fs(m, 8.5);
+      var pad = Math.max(5, Math.min(12, w * 0.04));
+      var topo = fs * 0.9 + 4, base = h - fs * 1.9 - 2, trilho = Math.max(8, base - topo);
+      var toY = function (vv) { return topo + (1 - (Math.max(LMIN, Math.min(LMAX, vv)) - LMIN) / (LMAX - LMIN)) * trilho; };
+      var cor = corMedidor(m, 0, 0.72), corT = CV.corRGB(m, 1);
+      var trilhoCor = corT ? CV.rgba(corT, 1) : CV.gridInk(m, 0.06);
+      // régua
+      var x0 = Math.round(pad + fs * 1.5 + 4);
+      var bw = Math.max(6, Math.min(30, w * 0.1)), gap = Math.max(3, Math.round(bw * 0.35)), totW = bw * 2 + gap;
+      c.font = CV.font(m, 8.5); c.textAlign = 'right';
+      [0, 6, 12, 24, 36, 50].forEach(function (mk) {
+        var y = Math.round(toY(-mk)) + 0.5;
+        c.fillStyle = CV.gridInk(m, 0.06); c.fillRect(x0 - 2, y, totW + 4, 1);
+        c.fillStyle = CV.gridInk(m, 0.4); c.fillText(String(mk), x0 - 5, y + fs * 0.35);
       });
-      // barra atual
-      var yv = toY(lufs);
-      var hot = lufs > -9;
-      c.shadowBlur = CV.isLight(m) ? 0 : s.glow * 0.5; c.shadowColor = CV.hsla(hot ? colHot : col, 1);
-      c.fillStyle = CV.hsla(hot ? colHot : col, 0.92);
-      c.fillRect(x, yv, barW, 8 + (h - 52) - yv);
-      c.shadowBlur = 0;
-      // marcador da média
-      var ya = toY(avg);
-      c.fillStyle = CV.isLight(m) ? '#141412' : '#fff';
-      c.fillRect(x - 6, ya - 1, barW + 12, 2);
-      // marcador do alvo
-      var yt = toY(s.alvo);
-      c.strokeStyle = CV.isLight(m) ? 'rgba(20,20,18,0.6)' : 'rgba(240,239,233,0.6)';
-      c.setLineDash([4, 3]);
-      c.beginPath(); c.moveTo(x - 6, yt); c.lineTo(x + barW + 6, yt); c.stroke();
-      c.setLineDash([]);
-      // números
-      c.fillStyle = CV.isLight(m) ? 'rgba(10,10,8,0.92)' : 'rgba(255,255,255,0.92)';
-      c.font = '600 ' + Math.min(20, h * 0.14) + 'px "SF Mono", ui-monospace, monospace';
-      c.textAlign = 'center';
-      c.fillText(lufs <= -69 ? '-∞' : lufs.toFixed(1), w / 2, h - 24);
-      c.font = '10px "SF Mono", ui-monospace, monospace';
-      c.fillStyle = CV.isLight(m) ? 'rgba(10,10,8,0.55)' : 'rgba(255,255,255,0.5)';
-      c.fillText('MÉD ' + (avg <= -69 ? '-∞' : avg.toFixed(1)), w / 2, h - 10);
-      label(c, 'LUFS≈', w / 2, 14, 'center', null, m);
+      var vals = [vS, vI], nomes = ['CURTO', 'MÉDIO'];
+      // o nome inteiro só entra se couber no passo da barra; senão vira a inicial
+      c.font = CV.font(m, 7.5);
+      var cabe = c.measureText('CURTO').width <= bw + gap - 6;
+      for (var i = 0; i < 2; i++) {
+        var alvo = vals[i];
+        if (st.sb[i] === undefined) st.sb[i] = alvo;
+        st.sb[i] += (alvo - st.sb[i]) * (1 - Math.exp(-dt / (alvo > st.sb[i] ? 0.06 : 0.22)));
+        // marca de pico: segura 1,5s e desce devagar
+        if (st.ph[i] === undefined || st.sb[i] > st.ph[i]) { st.ph[i] = st.sb[i]; st.pt[i] = 1.5; }
+        else if ((st.pt[i] -= dt) <= 0) st.ph[i] -= dt * 8;
+        var bx = x0 + i * (bw + gap), y = toY(st.sb[i]);
+        c.fillStyle = trilhoCor; c.fillRect(bx, topo, bw, trilho);
+        c.fillStyle = CV.rgba(cor, i === 0 ? 0.62 : 0.95); c.fillRect(bx, y, bw, topo + trilho - y);
+        if (st.ph[i] > LMIN + 1) { c.fillStyle = CV.rgba(cor, 1); c.fillRect(bx, Math.round(toY(st.ph[i])), bw, 1.5); }
+        c.font = CV.font(m, 7.5); c.textAlign = 'center'; c.fillStyle = CV.gridInk(m, 0.4);
+        c.fillText(cabe ? nomes[i] : nomes[i].charAt(0), bx + bw / 2, base + fs * 1.45);
+      }
+      // o número: grande, na cor do medidor, sem caixa
+      var lbl = st.sm <= -69 ? '-∞' : st.sm.toFixed(1);
+      var xn = x0 + totW + Math.max(10, w * 0.05), sobra = w - xn - pad;
+      if (sobra >= 34) {
+        var fn = Math.max(11, Math.min(trilho * 0.36, sobra / 3.6, 64));
+        c.font = '500 ' + fn.toFixed(1) + 'px "SF Mono", ui-monospace, monospace';
+        c.textAlign = 'left'; c.fillStyle = CV.rgba(cor, 1);
+        c.fillText(lbl, xn, topo + fn * 0.82);
+        rotulo(c, m, 'LUFS', xn + 1, topo + fn + fs * 1.3, 'left', 0.42);
+        if (sobra >= 70 && topo + fn + fs * 2.9 < h - 4) rotulo(c, m, 'curto ' + (vS <= -69 ? '-∞' : vS.toFixed(1)) + '   mom ' + (vM <= -69 ? '-∞' : vM.toFixed(1)), xn + 1, topo + fn + fs * 2.8, 'left', 0.32);
+      } else {
+        c.font = '500 ' + Math.max(9, fs * 1.2).toFixed(1) + 'px "SF Mono", ui-monospace, monospace';
+        c.textAlign = 'right'; c.fillStyle = CV.rgba(cor, 1);
+        c.fillText(lbl, w - 4, topo - 2);
+      }
     }
   });
 
-  /* ================= ESPAÇO ESTÉREO ================= */
+  /* ================= ESTÉREO ================= */
+  /* Nuvem de pontos REDONDOS e pequenos (círculo com borda suavizada) no lugar dos
+     quadradinhos de 1 a 3 pixels, que davam textura de areia. Mesma geometria: cúpula
+     com a raiz no rodapé, ângulo pelo balanço, raio pela amplitude. Testei carimbo
+     com degradê (drawImage por ponto): ficava lindo e custava 1ms por quadro só de
+     JavaScript. O círculo no mesmo caminho sai por um quarto disso. */
   CV.register('gonio', {
-    name: 'Espaço estéreo', group: 'Estúdio',
-    defaults: defs({ trail: 0.7, fog: 0 }),
-    schema: COMMON.concat([
-      { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.7 },
-      { k: 'fog', label: 'Ambiente', min: 0, max: 1.5, step: 0.05, def: 0 }
-    ]),
-    init: function (m) { m.st.rot = 0; m.st.wsm = 0; },
+    name: 'Estéreo', group: 'Estúdio', desc: 'Largura e balanço da mixagem',
+    defaults: { estilo: 'cupula', cor: 'auto', ponto: 0, sens: 1, trail: 0.62, guias: 0, regua: 0, cmap: 'auto' },
+    schema: [
+      { k: 'estilo', label: 'Estilo', type: 'seg', opts: [['cupula', 'Cúpula'], ['lissa', 'Lissajous']], def: 'cupula' },
+      { k: 'cor', label: 'Cor', type: 'seg', opts: [['auto', 'Do tema'], ['mapa', 'RGB'], ['lr', 'L/R'], ['fixa', 'Fixa']], def: 'auto' },
+      { k: 'ponto', label: 'Ponto', type: 'range', min: 0, max: 3, step: 0.1, def: 0, fmt: 'int' }
+    ],
+    init: function (m) { m.st.wsm = 0; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
-      if (!d) return;
-      var cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.46;
-      // inclinação leve com o mouse: sensação de olhar a sala
-      var tiltX = 0, tiltY = 0;
-      if (m.mouse && m.mouse.over) {
-        tiltX = (m.mouse.x / w - 0.5) * 0.3;
-        tiltY = (m.mouse.y / h - 0.5) * 0.3;
+      CV.fade(m, c, s.trail);
+      if (!d || !d.timeL) return;
+      var L = d.timeL, R = d.timeR, n = Math.min(L.length, R.length), i;
+      var cupula = s.estilo === 'cupula';
+      var padB = Math.max(4, h * 0.04);
+      var cx = w / 2, cy = cupula ? h - padB : h / 2;
+      var RR = cupula ? Math.min(w * 0.47, h - padB - 4) : Math.min(w, h) * 0.44;
+      var sz = s.ponto > 0.05 ? s.ponto : Math.max(0.9, Math.min(1.8, Math.sqrt(w * h) / 150));
+      // painel grande ganha mais pontos (até as 1024 amostras do quadro), pequeno fica leve
+      var step = Math.max(1, Math.round(n / Math.min(1024, 300 + Math.sqrt(w * h) * 0.9)));
+      if (s.guias >= 0.5) {
+        c.strokeStyle = CV.gridInk(m, 0.06); c.lineWidth = 1;
+        c.beginPath();
+        if (cupula) { c.arc(cx, cy, RR, Math.PI, 0); c.moveTo(cx, cy); c.lineTo(cx, cy - RR); }
+        else { c.arc(cx, cy, RR, 0, Math.PI * 2); c.moveTo(cx - RR, cy); c.lineTo(cx + RR, cy); }
+        c.stroke();
       }
-      // névoa de ambiente: respira com o nível
-      if (s.fog > 0) {
-        m.st.rot += dt * 0.2 * s.speed;
-        CV.blend(m, c);
-        for (var fb = 0; fb < 2; fb++) {
-          var fa = m.st.rot + fb * 3.1;
-          var fx = cx + Math.cos(fa) * R * 0.35, fy = cy + Math.sin(fa) * R * 0.25;
-          var fr = R * (0.5 + d.level * 2);
-          var fg = c.createRadialGradient(fx, fy, 0, fx, fy, fr);
-          var fcol = CV.pal(m, fb, t);
-          fg.addColorStop(0, CV.hsla(fcol, Math.min(0.14, d.level * 1.2) * s.fog));
-          fg.addColorStop(1, CV.hsla(fcol, 0));
-          c.fillStyle = fg;
-          c.fillRect(0, 0, w, h);
+      var bB = Math.min(1, d.bass * 1.5), bM = Math.min(1, d.mid * 2.2), bH = Math.min(1, d.high * 2.6);
+      var hueBanda = (0 * bB * bB + 120 * bM * bM + 215 * bH * bH) / (bB * bB + bM * bM + bH * bH + 1e-6);
+      var corG = s.cor === 'auto' ? (CV.themeOf(m) === 'minimeters' ? 'mapa' : 'tema') : s.cor;
+      var gA = CV.corRGB(m, 0), gB = CV.corRGB(m, 1);
+      if (corG === 'tema' && !(gA && gB)) corG = 'fixa';
+      var CN = 5, AN = 4, bk = m.st._bk;
+      if (!bk || bk.length !== CN * AN) { bk = m.st._bk = []; for (i = 0; i < CN * AN; i++) bk.push([]); }
+      for (i = 0; i < bk.length; i++) bk[i].length = 0;
+      for (i = 0; i < n; i += step) {
+        var a = L[i], b = R[i], px, py, cv;
+        if (cupula) {
+          var sum = Math.abs(a) + Math.abs(b);
+          if (sum < 1e-5) continue;
+          var pan = (Math.abs(b) - Math.abs(a)) / sum;
+          pan = pan < 0 ? -Math.pow(-pan, 0.45) : Math.pow(pan, 0.45);
+          var ang = pan * Math.PI / 2, rr = Math.min(1, sum * 0.72 * s.sens) * RR;
+          px = cx + Math.sin(ang) * rr; py = cy - Math.cos(ang) * rr;
+          cv = s.cor === 'lr' ? (pan + 1) * 0.5 : Math.min(1, rr / RR * 1.15);
+        } else {
+          var xx = (a - b) * 0.707, yy = -(a + b) * 0.707;
+          px = cx + xx * RR * s.sens; py = cy + yy * RR * s.sens;
+          cv = Math.min(1, Math.sqrt(xx * xx + yy * yy) * 1.4);
         }
-        CV.blend(m, c, false);
+        var ai = (Math.min(0.999, 0.25 + (1 - i / n) * 0.75) * AN) | 0;
+        var ci = (cv * CN) | 0; if (ci > CN - 1) ci = CN - 1; if (ci < 0) ci = 0;
+        bk[ci * AN + ai].push(px, py);
       }
-      // nuvem orgânica de amostras: sem grade, sem mira
-      var L = d.timeL, Rr = d.timeR, n = Math.min(L.length, Rr.length);
-      var sc = R * s.sens;
-      var mono = CV.isMono(m);
       CV.blend(m, c);
-      // PERFORMANCE: fillRect no lugar de arc (era ~340 arcos por quadro, bem mais caro)
-      for (var i = 0; i < n; i += 3) {
-        var x = (L[i] - Rr[i]) * 0.707, y = -(L[i] + Rr[i]) * 0.707;
-        var depth = 1 - i / n; // amostra recente = mais perto
-        var r2 = Math.sqrt(x * x + y * y);
-        var col = mono ? [0, 0, 100] : CV.pal(m, Math.floor(r2 * 8), t);
-        var sz = 0.6 + depth * 1.6 + r2 * 2.4;
-        c.fillStyle = CV.hsla(col, Math.min(0.6, (0.05 + r2 * 1.3) * (0.35 + depth)));
-        c.fillRect(cx + x * sc * (1 + tiltX) - sz * 0.5, cy + y * sc * (0.9 + tiltY) - sz * 0.5, sz, sz);
+      var raio = Math.max(0.6, sz * 0.72), volta = Math.PI * 2;
+      for (var ci2 = 0; ci2 < CN; ci2++) {
+        var cpos = (ci2 + 0.5) / CN, rgb;
+        if (corG === 'tema') rgb = misturaRgb(gA, gB, cpos);
+        else if (corG === 'lr') rgb = cpos < 0.5 ? [240, 88, 72] : [72, 150, 245];
+        else if (corG === 'fixa') rgb = corMedidor(m, 0);
+        else { var lav = Math.max(0, cpos - 0.55) / 0.45; rgb = hslRgb(hueBanda, 90 - lav * 70, 50 + cpos * 18 + lav * 22); }
+        for (var ai2 = 0; ai2 < AN; ai2++) {
+          var arr = bk[ci2 * AN + ai2]; if (!arr.length) continue;
+          c.fillStyle = CV.rgba(rgb, (ai2 + 0.5) / AN * 0.6);
+          c.beginPath();
+          for (var q = 0; q < arr.length; q += 2) { c.moveTo(arr[q] + raio, arr[q + 1]); c.arc(arr[q], arr[q + 1], raio, 0, volta); }
+          c.fill();
+        }
       }
       CV.blend(m, c, false);
-      // largura estéreo: barra discreta na base
-      var sMid = 0, sSide = 0;
-      for (i = 0; i < n; i += 4) {
-        var md = (L[i] + Rr[i]) * 0.5, sd = (L[i] - Rr[i]) * 0.5;
-        sMid += md * md; sSide += sd * sd;
-      }
-      var width = Math.sqrt(sSide) / (Math.sqrt(sMid) + 0.0001);
-      m.st.wsm += (Math.min(1.4, width) - m.st.wsm) * Math.min(1, dt * 4);
-      var acc = mono ? [0, 0, 90] : CV.pal(m, 2, t);
-      var bw = Math.min(1, m.st.wsm) * w * 0.6;
-      c.fillStyle = CV.gridInk(m, 0.06);
-      c.fillRect(w * 0.2, h - 12, w * 0.6, 2);
-      c.fillStyle = CV.hsla(acc, 0.75);
-      c.fillRect(w / 2 - bw / 2, h - 12, bw, 2);
-      label(c, 'L', w * 0.2 - 10, h - 8, 'left', null, m);
-      label(c, 'R', w * 0.8 + 4, h - 8, 'left', null, m);
     }
   });
 
   /* ================= OSCILOSCÓPIO ================= */
+  /* Linha lisa (média de cada pedaço, desenhada em curva) com um véu até a linha do
+     meio. O contorno mínimo/máximo por pixel de dispositivo dava 2.896 chamadas por
+     quadro e uma borda serrilhada. A trava no tom (YIN) é a mesma. */
   CV.register('scope', {
-    name: 'Osciloscópio', group: 'Estúdio',
-    defaults: defs({ trail: 0.6, glow: 8, linhas: 1, fosforo: 0 }),
-    schema: COMMON.concat([
-      { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.6 },
-      { k: 'linhas', label: 'Camadas', min: 1, max: 3, step: 1, def: 1 },
-      { k: 'fosforo', label: 'Verde fósforo', min: 0, max: 1, step: 1, def: 0 }
-    ]),
-    init: function (m) {},
+    name: 'Osciloscópio', group: 'Estúdio', desc: 'A onda parada no tom, com a nota',
+    defaults: { modo: 'pitch', ciclo: 'multi', sens: 1, cheio: 1, trail: 0, cmap: 'auto' },
+    schema: [
+      { k: 'modo', label: 'Trava', type: 'seg', opts: [['pitch', 'Tom'], ['free', 'Livre']], def: 'pitch' },
+      { k: 'ciclo', label: 'Ciclo', type: 'seg', opts: [['multi', 'Múltiplo'], ['single', 'Único']], def: 'multi' },
+      { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
+    ],
+    init: function (m) { m.st.per = 512; },
     draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
-      if (!d) return;
-      // linha central de referência (leitura de instrumento)
-      c.strokeStyle = CV.gridInk(m, 0.07); c.lineWidth = 1;
-      c.beginPath(); c.moveTo(0, h / 2 + 0.5); c.lineTo(w, h / 2 + 0.5); c.stroke();
-      var td = d.time, n = td.length;
-      var start = 0;
-      for (var i = 1; i < n / 2; i++) if (td[i - 1] <= 0 && td[i] > 0) { start = i; break; }
-      var span = Math.floor(n / 2);
-      var layers = Math.round(s.linhas);
-      c.lineJoin = 'round';
-      for (var ly = 0; ly < layers; ly++) {
-        var col;
-        if (s.fosforo >= 0.5) col = [130, 90, 62]; // verde de osciloscópio antigo (opcional)
-        else col = CV.isMono(m) ? [0, 0, 96] : CV.pal(m, ly, t);
-        var off = ly * 40, ampMul = 1 - ly * 0.25;
-        c.shadowBlur = CV.isLight(m) ? 0 : s.glow * 0.4; c.shadowColor = CV.hsla(col, 1);
-        c.strokeStyle = CV.hsla(col, 0.95 - ly * 0.3);
-        c.lineWidth = 1.3 - ly * 0.3; c.beginPath();
-        for (i = 0; i < span; i++) {
-          var x = i / (span - 1) * w;
-          var y = h / 2 - td[(start + i + off) % n] * s.sens * h * 0.44 * ampMul;
-          i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+      var c = m.ctx, w = m.w, h = m.h, s = m.s, st = m.st;
+      if (s.trail > 0.001) CV.fade(m, c, s.trail); else c.clearRect(0, 0, w, h);
+      if (!d || !d.time) return;
+      var td = d.time, n = td.length, i;
+      c.fillStyle = CV.gridInk(m, 0.06); c.fillRect(0, Math.round(h / 2), w, 1);
+      // trava no tom: YIN (diferença acumulada normalizada), a cada 2 quadros
+      var per = st.per || 512;
+      st.pf = (st.pf || 0) + 1;
+      if (s.modo === 'pitch' && st.pf % 2 === 0) {
+        var win = Math.min(1024, n >> 1), lagMin = 20, lagMax = Math.min(760, n - win - 1);
+        var off = n - win - lagMax; if (off < 0) { off = 0; lagMax = Math.max(lagMin + 1, n - win - 1); }
+        var e0 = 0;
+        for (i = 0; i < win; i += 2) e0 += td[off + i] * td[off + i];
+        if (e0 > 1e-5) {
+          var dd = st._dd;
+          if (!dd || dd.length < lagMax + 1) dd = st._dd = new Float32Array(lagMax + 1);
+          var run = 0, bestLag = 0, bestVal = 2;
+          for (var lag = lagMin; lag <= lagMax; lag++) {
+            var acc = 0;
+            for (i = 0; i < win; i += 4) { var df = td[off + i] - td[off + i + lag]; acc += df * df; }
+            dd[lag] = acc; run += acc;
+            var nv = acc * (lag - lagMin + 1) / (run || 1);
+            if (nv < bestVal) { bestVal = nv; bestLag = lag; }
+            if (nv < 0.16 && lag > lagMin + 2 && dd[lag - 1] <= acc) { bestLag = lag - 1; bestVal = nv; break; }
+          }
+          /* só troca de tom quando a periodicidade é de verdade (vale fundo). Chimbal e
+             chiado não têm período: antes a trava pulava pra 2kHz no meio do beat e
+             a tela virava uma reta. Sem período claro, fica o último tom bom. */
+          if (bestLag && bestVal < 0.3) {
+            var jump = Math.abs(bestLag - per) / Math.max(1, per);
+            per += (bestLag - per) * (jump > 0.35 ? 1 : Math.min(1, dt * 10));
+            st.per = per;
+          }
         }
-        c.stroke();
       }
-      c.shadowBlur = 0;
+      var cycles = s.ciclo === 'single' ? 1 : 3;
+      var span = s.modo === 'pitch' ? Math.max(64, Math.min(n - 2, Math.round(per * cycles))) : Math.floor(n / 2);
+      var start = n - span - 1; if (start < 0) start = 0;
+      var mid = h / 2, amp = h * 0.44 * s.sens;
+      var pts = Math.max(32, Math.min(700, Math.round(w / 2), span));
+      if (!st.X || st.X.length !== pts) { st.X = new Float32Array(pts); st.Y = new Float32Array(pts); }
+      var X = st.X, Y = st.Y;
+      for (i = 0; i < pts; i++) {
+        var a0 = start + ((i * span / pts) | 0), a1 = start + (((i + 1) * span / pts) | 0);
+        if (a1 <= a0) a1 = a0 + 1;
+        var sm = 0, cnt = 0;
+        for (var q = a0; q < a1 && q < n; q++) { sm += td[q]; cnt++; }
+        X[i] = i / (pts - 1) * w;
+        Y[i] = mid - Math.max(-1.05, Math.min(1.05, cnt ? sm / cnt : 0)) * amp;
+      }
+      var col = corMedidor(m, 0, 0.88), colF = CV.corRGB(m, 1);
+      c.lineJoin = 'round';
+      if (s.cheio >= 0.5) {
+        c.fillStyle = colF ? CV.rgba(colF, 0.8) : CV.rgba(col, 0.16);
+        c.beginPath(); CV.curva(c, X, Y, pts); c.lineTo(w, mid); c.lineTo(0, mid); c.closePath(); c.fill();
+      }
+      c.strokeStyle = CV.rgba(col, 1); c.lineWidth = 1.4;
+      c.beginPath(); CV.curva(c, X, Y, pts); c.stroke();
+      if (s.modo === 'pitch' && d.sr && h > 40) {
+        var f0 = d.sr / Math.max(1, per);
+        if (f0 > 25 && f0 < 4000 && d.rms > 0.004) rotulo(c, m, CV.noteName(f0) + '  ' + CV.fmtHz(f0), 7, h - 7, 'left', 0.42);
+      }
     }
   });
 
   /* ================= ESPECTROGRAMA ================= */
   CV.register('spectrogram', {
-    name: 'Espectrograma', group: 'Estúdio',
-    defaults: defs({ contraste: 1.5 }),
+    name: 'Espectrograma', group: 'Estúdio', buffered: true, desc: 'Histórico das frequências',
+    defaults: { sens: 1, speed: 1, contraste: 1.5, cmap: 'auto' },
     schema: [
-      { k: 'sens', label: 'Ganho', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'speed', label: 'Rolagem', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'contraste', label: 'Contraste', min: 0.6, max: 3, step: 0.05, def: 1.5 }
+      { k: 'sens', label: 'Ganho', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
+      { k: 'speed', label: 'Rolagem', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
+      { k: 'contraste', label: 'Contraste', type: 'range', min: 0.6, max: 3, step: 0.05, def: 1.5 },
+      { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
     ],
     init: function (m) {},
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
       var buf = offscreen(m, 'buf'), bc = buf.getContext('2d');
       if (!d) { c.clearRect(0, 0, w, h); return; }
-      var dx = Math.max(1, Math.round(1.2 * s.speed * (m.dpr || 1)));
-      bc.globalCompositeOperation = 'copy';
-      bc.drawImage(buf, -dx, 0);
-      CV.blend(m, bc, false);
-      var H = buf.height, n = d.freq.length;
+      var dx = CV.passo(m, 1.2 * s.speed * (m.dpr || 1), dt);
       var FMIN = 30, FMAX = 16000;
-      bc.clearRect(buf.width - dx, 0, dx, H);
-      var rows = Math.min(160, H);
-      for (var r = 0; r < rows; r++) {
-        var fr = FMIN * Math.pow(FMAX / FMIN, 1 - r / (rows - 1));
-        var bin = Math.min(n - 1, Math.round(fr / (22050 / n)));
-        var v = Math.pow(d.freq[bin] / 255, s.contraste) * s.sens; if (v > 1) v = 1;
-        if (v < 0.05) continue;
-        var col;
-        if (m.s.colorMode !== 'custom' && CV.themeOf(m) === 'mono') col = [0, 0, v * 100];
-        else { var base = CV.pal(m, 0, t); col = [(base[0] + v * 70) % 360, base[1], 12 + v * 55]; }
-        bc.fillStyle = CV.hsla(col, Math.min(1, 0.15 + v));
-        bc.fillRect(buf.width - dx, r / rows * H, dx, H / rows + 1);
-      }
-      c.clearRect(0, 0, w, h);
-      c.drawImage(buf, 0, 0, buf.width, buf.height, 0, 0, w, h);
-      // hover: qual frequência é essa linha
+      if (dx >= 1) CV.registry.spectrogram.coluna(m, d, s, buf, bc, dx, FMIN, FMAX);
+      CV.scrollRing.blit(m, 'buf', buf, c, w, h, m.st._pa || 0);
+      // hover: qual frequência é essa linha (a cada quadro: antes piscava a 120Hz)
       if (m.mouse && m.mouse.over) {
         var fr2 = FMIN * Math.pow(FMAX / FMIN, 1 - m.mouse.y / h);
         c.strokeStyle = CV.isLight(m) ? 'rgba(20,20,18,0.5)' : 'rgba(240,239,233,0.45)';
+        c.lineWidth = 1;
         c.beginPath(); c.moveTo(0, m.mouse.y); c.lineTo(w, m.mouse.y); c.stroke();
         var txt = CV.fmtHz(fr2) + ' · ' + CV.noteName(fr2);
-        c.font = '10px "SF Mono", ui-monospace, monospace';
+        c.font = CV.font(m, 10);
         var tw = c.measureText(txt).width;
         c.fillStyle = CV.isLight(m) ? 'rgba(245,243,236,0.9)' : 'rgba(7,7,11,0.85)';
         c.fillRect(6, m.mouse.y - 20, tw + 8, 15);
         c.fillStyle = CV.isLight(m) ? '#141412' : '#f0efe9';
         c.textAlign = 'left';
         c.fillText(txt, 10, m.mouse.y - 8);
+      }
+    },
+    coluna: function (m, d, s, buf, bc, dx, FMIN, FMAX) {
+      CV.blend(m, bc, false);
+      var H = buf.height, n = d.freq.length;
+      var x = CV.scrollRing.next(m, 'buf', buf, bc, dx);
+      /* MAIS LINHAS, E CADA UMA LEVA O MAIOR DO INTERVALO DELA.
+         Duas coisas apertavam a imagem. O teto de 160 linhas: num painel alto em
+         Retina sobrava pixel sem informação, e a faixa saía em degraus grossos. E
+         a escolha do bin MAIS PRÓXIMO: nos agudos vários bins caem na mesma linha,
+         e pegar o mais próximo joga fora o pico que estava ao lado, então prato e
+         chimbal saíam apagados. Agora a linha leva o maior do intervalo, o mesmo
+         critério que o espectro usa. O custo é uma varredura de n bins por coluna,
+         que é a mesma conta que a FFT já entregou pronta. */
+      var rows = Math.min(720, Math.max(24, Math.round(H)));
+      /* v2: A FFT DE 4096 DO ESPECTRO, em dBFS, no lugar da de 1024 da v1. Cada raia
+         caiu de 23Hz pra 11,7Hz: no grave a faixa parava de sair em blocos (de 30 a
+         200Hz eram 7 raias pra pintar a altura inteira). Inclinação de 3dB por oitava
+         a partir de 1kHz, senão o agudo de qualquer música sai apagado. */
+      var sdb = d.spectrum ? d.spectrum(4096) : null;
+      var nb2 = sdb ? sdb.length : n, bHz = sdb ? d.specBinHz : d.binHz;
+      var tab = CV.binTableFull(m, 'sg', rows, nb2, bHz, FMIN, FMAX, true);
+      var bins = tab.bins, hzs = tab.hz;
+      var rh = H / rows + 1;
+      for (var r = 0; r < rows; r++) {
+        // a tabela vem invertida (linha 0 = agudo), então o intervalo desce
+        var b0 = bins[r], b1 = r < rows - 1 ? bins[r + 1] : b0;
+        var bLo = b1 < b0 ? b1 : b0, bHi = b1 < b0 ? b0 : b1, raw, qb, lv;
+        if (sdb) {
+          raw = sdb[b0];
+          if (bHi > bLo + 1) { for (qb = bLo; qb <= bHi; qb++) if (sdb[qb] > raw) raw = sdb[qb]; }
+          else {
+            /* v2.1: no grave cada raia cobre várias linhas, e a linha pegava a raia
+               mais próxima: o grave saía em degraus. Agora interpola entre as raias
+               (Catmull-Rom, a mesma do espectro) e vira degradê. */
+            var pf = hzs[r] / bHz, i0 = pf | 0; if (i0 < 1) i0 = 1; if (i0 > nb2 - 3) i0 = nb2 - 3;
+            var fr = pf - i0, ya = sdb[i0 - 1], yb = sdb[i0], yc = sdb[i0 + 1], yd = sdb[i0 + 2];
+            raw = yb + 0.5 * fr * (yc - ya + fr * (2 * ya - 5 * yb + 4 * yc - yd + fr * (3 * (yb - yc) + yd - ya)));
+          }
+          lv = (raw + 3 * Math.log(hzs[r] / 1000) / Math.LN2 + 92) / 70;
+        } else {
+          raw = d.freq[b0];
+          if (bHi > bLo + 1) { raw = 0; for (qb = bLo; qb <= bHi; qb++) if (d.freq[qb] > raw) raw = d.freq[qb]; }
+          lv = raw / 255;
+        }
+        if (lv <= 0) continue;
+        var v = Math.pow(lv > 1 ? 1 : lv, s.contraste) * s.sens; if (v > 1) v = 1;
+        if (v < 0.04) continue;
+        // energia direto no COLOR MAP: é o que o MiniMeters faz e o que dá o gradiente rico
+        bc.fillStyle = CV.cmap(m, v, Math.min(1, 0.2 + v));
+        bc.fillRect(x, r / rows * H, dx, rh);
+      }
+    }
+  });
+
+  /* ================= VU (o sétimo medidor do MiniMeters) =================
+     Ponteiro de VU de verdade: a escala é linear em TENSÃO, não em dB. Por isso o
+     0 VU cai a 71% do arco e o -20 fica espremido no começo, igual ao aparelho.
+     Balística de 300 milésimos, subindo e descendo no mesmo tempo, que é o que
+     define um VU. A referência diz quantos dBFS valem 0 VU: -18 é o padrão de estúdio. */
+  var VU_MARKS = [-20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3];
+  function vuPos(db) {
+    var p = Math.pow(10, db / 20) / 1.4125;   // 1.4125 = +3 VU no fim do arco
+    return p < 0 ? 0 : p > 1.06 ? 1.06 : p;
+  }
+  CV.register('vu', {
+    name: 'VU', group: 'Estúdio', desc: 'Ponteiro analógico com balística de 300 ms',
+    /* REFERÊNCIA PADRÃO -8 dBFS. Em -18 (o padrão de mixagem) um beat masterizado a
+       -12 LUFS deixa o ponteiro grudado no fim da escala e o VU vira enfeite; em -8 ele
+       dança em volta do 0 e entra no vermelho no kick. Pra mixar, troque pra -18. */
+    defaults: { estilo: 'agulha', ref: -8 },
+    schema: [
+      { k: 'estilo', label: 'Estilo', type: 'seg', opts: [['agulha', 'Agulha'], ['barra', 'Barra']], def: 'agulha' },
+      { k: 'ref', label: '0 VU em', type: 'seg', opts: [[-18, '-18 mix'], [-12, '-12'], [-8, '-8 master']], def: -8 }
+    ],
+    init: function (m) { m.st.p = [0, 0]; m.st.led = [0, 0]; m.st.hold = [0, 0]; m.st.holdT = [0, 0]; },
+    draw: function (m, d, dt, t) {
+      var c = m.ctx, w = m.w, h = m.h, s = m.s, st = m.st;
+      c.clearRect(0, 0, w, h);
+      if (!st.p) this.init(m);
+      // nível de cada lado nas amostras novas do quadro
+      var pos = [0, 0], over = [false, false];
+      if (d && d.timeL) {
+        var n = d.timeL.length;
+        var fresh = Math.min(n, Math.max(256, Math.round((d.sr || 48000) * dt * 1.2)));
+        var src = [d.timeL, d.timeR];
+        for (var ch = 0; ch < 2; ch++) {
+          var arr = src[ch], acc = 0, pk = 0;
+          for (var i = n - fresh; i < n; i++) { var x = arr[i]; acc += x * x; if (x > pk) pk = x; else if (-x > pk) pk = -x; }
+          var rms = Math.sqrt(acc / fresh);
+          // RMS x raiz de 2 lê como o pico de um seno, que é como VU se calibra
+          var db = rms > 1e-7 ? 20 * Math.log10(rms * Math.SQRT2) - (+s.ref || -8) : -60;
+          pos[ch] = vuPos(db);
+          over[ch] = pk > 0.891;   // -1 dBFS na amostra
+        }
+      }
+      var k = 1 - Math.exp(-dt / 0.065);
+      for (var q = 0; q < 2; q++) {
+        st.p[q] += (pos[q] - st.p[q]) * k;
+        st.led[q] = (over[q] || st.p[q] > 0.89) ? 0.5 : Math.max(0, st.led[q] - dt);
+        if (st.p[q] >= st.hold[q] || st.holdT[q] <= 0) { st.hold[q] = st.p[q]; st.holdT[q] = 1.4; }
+        else st.holdT[q] -= dt;
+      }
+      var light = CV.isLight(m);
+      var ink = CV.corMod(m, 0) || CV.hsla(CV.isMono(m) ? [0, 0, light ? 10 : 94] : CV.pal(m, 0, t), 0.95);
+      var red = CV.corMod(m, 1) || (light ? 'hsl(354,70%,40%)' : 'hsl(354,84%,62%)');
+      var escala = CV.gridInk(m, 0.42), texto = CV.gridInk(m, 0.6);
+      var lados = ['L', 'R'];
+
+      if (s.estilo === 'barra' || w < 70 || h < 46) {
+        /* BARRA: escala em dB linear de -20 a +3, que lê melhor em tira. */
+        var deitada = w >= h;
+        var fsB = CV.fs(m, 8.5);
+        for (var b = 0; b < 2; b++) {
+          var vdb = st.p[b] > 0.0005 ? 20 * Math.log10(st.p[b] * 1.4125) : -40;
+          var hdb = st.hold[b] > 0.0005 ? 20 * Math.log10(st.hold[b] * 1.4125) : -40;
+          var u = Math.max(0, Math.min(1, (vdb + 20) / 23)), uh = Math.max(0, Math.min(1, (hdb + 20) / 23));
+          var u0 = 20 / 23;
+          if (deitada) {
+            var bx = fsB * 2.2, bw = w - bx - 8, bh = Math.max(4, (h - fsB * 3) / 2 - 4), by = fsB * 1.4 + b * (bh + 6);
+            c.fillStyle = CV.gridInk(m, 0.07); c.fillRect(bx, by, bw, bh);
+            c.fillStyle = ink; c.fillRect(bx, by, bw * Math.min(u, u0), bh);
+            if (u > u0) { c.fillStyle = red; c.fillRect(bx + bw * u0, by, bw * (u - u0), bh); }
+            c.fillStyle = uh > u0 ? red : ink; c.fillRect(bx + bw * uh - 1, by, 2, bh);
+            c.font = CV.font(m, 8.5); c.textAlign = 'right'; c.fillStyle = texto;
+            c.fillText(lados[b], bx - 5, by + bh / 2 + fsB * 0.35);
+            if (b === 1) {
+              c.textAlign = 'center';
+              [-20, -10, -5, -3, 0, 3].forEach(function (mk) {
+                var tx = bx + bw * (mk + 20) / 23;
+                c.fillStyle = mk > 0 ? red : texto;
+                c.fillText(mk > 0 ? '+' + mk : String(mk), tx, by + bh + fsB * 1.3);
+              });
+            }
+          } else {
+            var bw2 = Math.max(4, Math.min(26, w * 0.24)), gap2 = 6, x0 = w / 2 - bw2 - gap2 / 2 + b * (bw2 + gap2);
+            var top = fsB * 1.6, bh2 = h - top - fsB * 2;
+            c.fillStyle = CV.gridInk(m, 0.07); c.fillRect(x0, top, bw2, bh2);
+            var yv = top + bh2 * (1 - Math.min(u, u0));
+            c.fillStyle = ink; c.fillRect(x0, yv, bw2, top + bh2 - yv);
+            if (u > u0) { c.fillStyle = red; c.fillRect(x0, top + bh2 * (1 - u), bw2, bh2 * (u - u0)); }
+            c.fillStyle = uh > u0 ? red : ink; c.fillRect(x0, top + bh2 * (1 - uh) - 1, bw2, 2);
+            c.font = CV.font(m, 8.5); c.textAlign = 'center'; c.fillStyle = texto;
+            c.fillText(lados[b], x0 + bw2 / 2, h - fsB * 0.6);
+          }
+        }
+        return;
+      }
+
+      /* AGULHA: dois mostradores, lado a lado se o painel é largo, empilhados se é alto. */
+      var lado = w / h > 1.5;
+      var fw = lado ? w / 2 : w, fh = lado ? h : h / 2;
+      var fs = CV.fs(m, 8.5);
+      for (var f = 0; f < 2; f++) {
+        var fx = lado ? f * fw : 0, fy = lado ? 0 : f * fh;
+        // o pivô fica um pouco abaixo do mostrador, como no aparelho
+        var R = Math.min((fh - fs * 1.6 - 4) / 0.9, (fw - 12) / 1.7 - fs);
+        if (R < 14) R = 14;
+        var cx = fx + fw / 2, cy = fy + fh + R * 0.1 - 2;
+        var A0 = -0.84, A1 = 0.84;   // ±48°
+        var ang = function (p) { return A0 + (A1 - A0) * p; };
+        c.save();
+        c.beginPath(); c.rect(fx, fy, fw, fh); c.clip();
+        // arco da escala: fio até o 0, vermelho mais grosso do 0 ao +3
+        c.lineWidth = 1; c.strokeStyle = escala;
+        c.beginPath(); c.arc(cx, cy, R, -Math.PI / 2 + ang(0.05), -Math.PI / 2 + ang(vuPos(0))); c.stroke();
+        c.lineWidth = Math.max(2, R * 0.03); c.strokeStyle = red;
+        c.beginPath(); c.arc(cx, cy, R, -Math.PI / 2 + ang(vuPos(0)), -Math.PI / 2 + ang(1)); c.stroke();
+        // marcas e números
+        c.font = CV.font(m, 8.5); c.textAlign = 'center';
+        var poucos = R < 46;
+        for (var mi = 0; mi < VU_MARKS.length; mi++) {
+          var mk2 = VU_MARKS[mi], a2 = ang(vuPos(mk2)), sn = Math.sin(a2), cs = Math.cos(a2);
+          var r0 = R - Math.max(4, R * 0.08), r1 = R;
+          c.strokeStyle = mk2 > 0 ? red : escala; c.lineWidth = 1;
+          c.beginPath(); c.moveTo(cx + sn * r0, cy - cs * r0); c.lineTo(cx + sn * r1, cy - cs * r1); c.stroke();
+          if (poucos && [-20, -10, -5, 0, 3].indexOf(mk2) < 0) continue;
+          var rl = R + fs * 0.95;
+          c.fillStyle = mk2 > 0 ? red : texto;
+          c.fillText(String(Math.abs(mk2)), cx + sn * rl, cy - cs * rl + fs * 0.35);
+        }
+        // VU no meio do mostrador e o lado no canto
+        c.font = CV.font(m, 10, 600); c.fillStyle = CV.gridInk(m, 0.34);
+        c.fillText('VU', cx, cy - R * 0.45);
+        c.font = CV.font(m, 8.5); c.textAlign = 'left'; c.fillStyle = texto;
+        c.fillText(lados[f], fx + 7, fy + fh - 7);
+        // agulha
+        var an = ang(Math.min(1.06, st.p[f]));
+        c.strokeStyle = ink; c.lineWidth = Math.max(1.25, R * 0.018);
+        c.beginPath(); c.moveTo(cx + Math.sin(an) * R * 0.18, cy - Math.cos(an) * R * 0.18);
+        c.lineTo(cx + Math.sin(an) * R * 1.02, cy - Math.cos(an) * R * 1.02); c.stroke();
+        // led de pico
+        c.fillStyle = st.led[f] > 0 ? red : CV.gridInk(m, 0.12);
+        c.beginPath(); c.arc(fx + fw - 9, fy + 9, 2.6, 0, Math.PI * 2); c.fill();
+        c.restore();
       }
     }
   });
@@ -714,7 +1517,7 @@
   ].join('\n');
 
   CV.register('psy', {
-    name: 'PSY (líquido)', group: 'Arte', webgl: true,
+    name: 'PSY', group: 'Arte', webgl: true, desc: 'Líquido psicodélico que derrete no grave',
     defaults: defs({ warp: 3, zoom: 1.6, mousef: 1 }),
     schema: [
       { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
@@ -734,54 +1537,11 @@
     }
   });
 
-  /* ================= TÚNEL ================= */
-  var TUNNEL_FRAG = [
-    'void main(){',
-    '  vec2 uv = (gl_FragCoord.xy - 0.5*u_res) / min(u_res.x, u_res.y);',
-    '  vec2 mo = (u_mouse - 0.5) * 0.6;',
-    '  uv -= mo;',
-    '  float t = u_t;',
-    '  float r = length(uv) + 0.0001;',
-    '  float a = atan(uv.y, uv.x);',
-    '  float seg = max(2.0, u_a);',
-    '  float wedge = 6.2831 / seg;',
-    '  a = abs(mod(a, wedge) - wedge*0.5);',
-    '  float depth = u_b / r + t * 1.6;',
-    '  float stripes = 0.5 + 0.5*sin(depth*3.0 - t*2.0 + u_bass*4.0);',
-    '  float tex = fbm(vec2(a*4.0, depth*0.5));',
-    '  float rings = smoothstep(0.35, 0.0, abs(fract(depth*0.5 + u_beat*0.3) - 0.5) - u_beat*0.15);',
-    '  vec3 col = pal(u_hue + depth*0.06 + a*0.25 + tex*0.3);',
-    '  col *= (0.14 + stripes*0.5 + tex*0.6) * (0.55 + u_bass*0.9);',
-    '  col += pal(u_hue + 0.5) * rings * (0.12 + u_beat*0.5);',
-    '  col += u_high * 0.26 * pow(noise(vec2(a*30.0, depth*2.0) + t*4.0), 5.0);',
-    '  col *= smoothstep(0.0, 0.14, r);',
-    '  float vig = 1.0 - dot(uv,uv)*0.52;',
-    '  gl_FragColor = vec4(col * vig * (0.02 + 0.98*u_gate), 1.0);',
-    '}'
-  ].join('\n');
-
-  CV.register('tunnel', {
-    name: 'Túnel', group: 'Arte', webgl: true,
-    defaults: defs({ seg: 8, zoom: 0.6 }),
-    schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'seg', label: 'Espelhos', min: 2, max: 16, step: 1, def: 8 },
-      { k: 'zoom', label: 'Profundidade', min: 0.2, max: 1.5, step: 0.05, def: 0.6 }
-    ],
-    init: function (m) { CV.glSetup(m, TUNNEL_FRAG); },
-    draw: function (m, d, dt, t) {
-      if (!CV.glFrame(m, d, dt, m.s.seg, m.s.zoom)) {
-        var c = m.canvas.getContext('2d'); if (!c) return;
-        c.fillStyle = CV.bgOf(m); c.fillRect(0, 0, m.w, m.h);
-      }
-    }
-  });
 
   /* ================= LISSAJOUS ================= */
   CV.register('lissa', {
-    name: 'Lissajous', group: 'Arte',
-    defaults: defs({ trail: 0.8, modo: 0, glow: 7 }),
+    name: 'Lissajous', group: 'Arte', desc: 'Figura de fase desenhada pelo som',
+    defaults: defs({ trail: 0.8, modo: 0 }),
     schema: COMMON.concat([
       { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.8 },
       { k: 'modo', label: 'Harmônico', min: 0, max: 1, step: 1, def: 0 }
@@ -789,8 +1549,7 @@
     init: function (m) { m.st.rot = 0; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
+      CV.fade(m, c, s.trail);
       if (!d) return;
       var gate = CV.gate(m, d, dt);
       var rotSpeed = 0.02 + gate * 0.35;
@@ -802,14 +1561,13 @@
       c.save();
       c.translate(cx, cy); c.rotate(m.st.rot);
       CV.blend(m, c);
-      c.shadowBlur = CV.isLight(m) ? 0 : s.glow * 0.5; c.shadowColor = CV.hsla(col, 1);
       if (s.modo >= 0.5) {
         var a = 2 + Math.round(d.bass * s.sens * 5), b2 = 3 + Math.round(d.high * s.sens * 6);
         var ph = t * 0.5 * s.speed, amp = sc * (0.12 + d.level * 3 * s.sens) * (0.2 + 0.8 * gate);
         c.strokeStyle = CV.hsla(col, 0.32 * (0.1 + 0.9 * gate));
-        c.lineWidth = 0.9;
+        c.lineWidth = CV.lw(m, 0.9);
         c.beginPath();
-        var STEPS = 700;
+        var STEPS = CV.det(m, 700, 1800);
         for (var i2 = 0; i2 <= STEPS; i2++) {
           var u = i2 / STEPS * 6.283 * 2;
           var x2 = Math.sin(a * u + ph) * amp * (0.8 + 0.2 * Math.sin(u * 3 + t));
@@ -819,13 +1577,15 @@
         c.stroke();
       } else {
         var L = d.timeL, R = d.timeR, n = Math.min(L.length, R.length);
-        c.lineWidth = 0.7;
+        c.lineWidth = CV.lw(m, 0.7);
+        // a cada 4 amostras a figura fica facetada em painel grande: lá o passo cai pra 2
+        var passo = w > 640 ? 2 : 4;
         for (var layer = 0; layer < 3; layer++) {
           var off = layer * 90;
           var cl = CV.pal(m, layer, t);
           c.strokeStyle = CV.hsla(cl, 0.24 * (0.1 + 0.9 * gate));
           c.beginPath();
-          for (var j = 0; j + off < n; j += 4) {
+          for (var j = 0; j + off < n; j += passo) {
             var x3 = L[j] * sc * s.sens * (1 + layer * 0.15);
             var y3 = R[j + off] * sc * s.sens * (1 + layer * 0.15);
             j === 0 ? c.moveTo(x3, y3) : c.lineTo(x3, y3);
@@ -835,14 +1595,13 @@
       }
       c.restore();
       CV.blend(m, c, false);
-      c.shadowBlur = 0;
     }
   });
 
   /* ================= TRAÇO (linha viva) ================= */
   CV.register('trace', {
-    name: 'Traço', group: 'Arte',
-    defaults: defs({ glow: 4, trail: 0.7, tensao: 1 }),
+    name: 'Traço', group: 'Arte', desc: 'Linha viva que respira com a música',
+    defaults: defs({ trail: 0.7, tensao: 1 }),
     schema: COMMON.concat([
       { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.7 },
       { k: 'tensao', label: 'Tensão', min: 0.2, max: 3, step: 0.05, def: 1 }
@@ -850,12 +1609,11 @@
     init: function (m) { m.st.ys = null; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
+      CV.fade(m, c, s.trail);
       if (!d) return;
       var gate = CV.gate(m, d, dt);
-      var N = 140, i;
-      if (!m.st.ys) { m.st.ys = new Float32Array(N); m.st.pt = 0; }
+      var N = CV.det(m, 140, 420), i;
+      if (!m.st.ys || m.st.ys.length !== N) { m.st.ys = new Float32Array(N); m.st.pt = m.st.pt || 0; }
       m.st.pt += dt * s.speed * (0.05 + gate * 1.4);
       var pt2 = m.st.pt, ys = m.st.ys;
       var td = d.time, step = Math.floor(td.length / N);
@@ -870,9 +1628,8 @@
       for (var pass = 0; pass < 2; pass++)
         for (i = 1; i < N - 1; i++) ys[i] += ((ys[i - 1] + ys[i + 1]) * 0.5 - ys[i]) * 0.5;
       var col = CV.isMono(m) ? [0, 0, 96] : CV.pal(m, 0, t);
-      c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1);
       c.strokeStyle = CV.hsla(col, 0.3 + gate * 0.6);
-      c.lineWidth = 1.4;
+      c.lineWidth = CV.lw(m, 1.4);
       c.beginPath();
       c.moveTo(0, h / 2 + ys[0]);
       for (i = 1; i < N - 1; i++) {
@@ -881,14 +1638,13 @@
       }
       c.lineTo(w, h / 2 + ys[N - 1]);
       c.stroke();
-      c.shadowBlur = 0;
     }
   });
 
   /* ================= CAMPO DE FLUXO ================= */
   CV.register('flow', {
-    name: 'Campo de fluxo', group: 'Arte',
-    defaults: defs({ glow: 2, dens: 1, trail: 0.8 }),
+    name: 'Fluxo', group: 'Arte', desc: 'Pó de partículas num campo de vento',
+    defaults: defs({ dens: 1, trail: 0.8 }),
     schema: COMMON.concat([
       { k: 'dens', label: 'Densidade', min: 0.3, max: 2.5, step: 0.05, def: 1 },
       { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.8 }
@@ -896,95 +1652,61 @@
     init: function (m) { m.st.ps = []; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
+      CV.fade(m, c, s.trail);
       if (!d) return;
       var gate = CV.gate(m, d, dt);
       if (m.st.pt === undefined) m.st.pt = 0;
       m.st.pt += dt * s.speed * (0.03 + gate * 0.9 + d.beatPulse * 0.5);
       var pt2 = m.st.pt;
-      var ps = m.st.ps, want = Math.round(520 * s.dens);
+      var ps = m.st.ps, want = Math.round(CV.det(m, 520, 1600) * s.dens);
       while (ps.length < want) ps.push({ x: Math.random() * w, y: Math.random() * h, life: Math.random(), b: Math.random() });
       if (ps.length > want) ps.length = want;
       var energy = Math.min(1.2, (d.level * 4 + d.bass * 0.6) * s.sens);
       var k1 = 0.011, k2 = 0.014, turb = 1 + d.bass * s.sens * 2.5;
       CV.blend(m, c);
       var mono = CV.isMono(m);
+      /* 520 partículas EM LOTES: 4 cores × 5 faixas de opacidade = 20 trocas de cor por
+         quadro, no lugar de 520 frases de cor (31 mil por segundo). */
+      var CN = mono ? 1 : 4, AN = 5, bk = m.st._bk;
+      if (!bk || bk.length !== CN * AN) { bk = m.st._bk = []; for (var z = 0; z < CN * AN; z++) bk.push([]); }
+      for (z = 0; z < bk.length; z++) bk[z].length = 0;
+      var vstep = (6 + energy * 170) * dt, jit = d.high * s.sens * 5, gm = 0.1 + 0.9 * gate;
+      var maxA = 0.03 + 0.7 * (0.25 + energy);
       for (var i = 0; i < ps.length; i++) {
         var p = ps[i];
         var a = (Math.sin(p.y * k1 + pt2 * 1.7) + Math.cos(p.x * k2 - pt2 * 1.2)) * Math.PI * turb;
-        var v = (6 + energy * 170) * dt;
-        p.x += Math.cos(a) * v;
-        p.y += Math.sin(a) * v;
-        p.x += (Math.random() - 0.5) * d.high * s.sens * 5;
-        p.y += (Math.random() - 0.5) * d.high * s.sens * 5;
+        p.x += Math.cos(a) * vstep + (Math.random() - 0.5) * jit;
+        p.y += Math.sin(a) * vstep + (Math.random() - 0.5) * jit;
         p.life -= dt * 0.22;
         if (p.life <= 0 || p.x < -4 || p.x > w + 4 || p.y < -4 || p.y > h + 4) {
           p.x = Math.random() * w; p.y = Math.random() * h; p.life = 1; p.b = Math.random();
           continue;
         }
-        var col = mono ? [0, 0, 100] : CV.pal(m, Math.floor(p.b * 4), t);
         var star2 = p.b > 0.92;
-        var bright = star2 ? 0.7 : 0.16; // poucas estrelas, muito pó
-        c.fillStyle = CV.hsla(col, (0.03 + bright * p.life * (0.25 + energy)) * (0.1 + 0.9 * gate));
-        // PERFORMANCE: o brilho não liga/desliga por partícula (era o gargalo); as estrelas
-        // ficam maiores em vez de ganharem sombra individual.
-        c.fillRect(p.x, p.y, star2 ? 2.2 : 1.1, star2 ? 2.2 : 1.1);
+        var al = (0.03 + (star2 ? 0.7 : 0.16) * p.life * (0.25 + energy)) * gm;
+        var ai = (al / maxA * AN) | 0; if (ai > AN - 1) ai = AN - 1; if (ai < 0) ai = 0;
+        var ci = mono ? 0 : ((p.b * 4) | 0) & 3;
+        bk[ci * AN + ai].push(p.x, p.y, star2 ? 2.2 : 1.1);
+      }
+      for (var ci2 = 0; ci2 < CN; ci2++) {
+        var pcol = mono ? [0, 0, 100] : CV.pal(m, ci2, t);
+        for (var ai2 = 0; ai2 < AN; ai2++) {
+          var pts = bk[ci2 * AN + ai2]; if (!pts.length) continue;
+          c.fillStyle = CV.hsla(pcol, maxA * (ai2 + 0.5) / AN * gm);
+          c.beginPath();
+          for (var k4 = 0; k4 < pts.length; k4 += 3) c.rect(pts[k4], pts[k4 + 1], pts[k4 + 2], pts[k4 + 2]);
+          c.fill();
+        }
       }
       CV.blend(m, c, false);
     }
   });
 
-  /* ================= ASCII ================= */
-  CV.register('ascii', {
-    name: 'ASCII', group: 'Arte',
-    defaults: defs({ cel: 14, texto: ' .:-=+*#%@' }),
-    schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'cel', label: 'Tamanho da célula', min: 10, max: 26, step: 1, def: 14 },
-      { k: 'texto', label: 'Símbolos (escuro→claro)', type: 'text', def: ' .:-=+*#%@' }
-    ],
-    init: function (m) {},
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * s.speed * (0.05 + gate * 1.3);
-      var pt2 = m.st.pt;
-      var ramp = (s.texto && s.texto.length > 1) ? s.texto : ' .:-=+*#%@';
-      var cell = Math.max(8, s.cel);
-      var cols = Math.ceil(w / cell), rows = Math.ceil(h / cell);
-      var f = d.freq, n = f.length;
-      c.font = (cell * 0.9) + 'px "SF Mono", ui-monospace, monospace';
-      c.textAlign = 'center'; c.textBaseline = 'middle';
-      var mono = CV.isMono(m);
-      for (var x = 0; x < cols; x++) {
-        var fr = 30 * Math.pow(16000 / 30, x / Math.max(1, cols - 1));
-        var bin = Math.min(n - 1, Math.round(fr / (22050 / n)));
-        var spec = Math.pow(f[bin] / 255, 1.3) * s.sens;
-        for (var y = 0; y < rows; y++) {
-          var ny = y / Math.max(1, rows - 1);
-          var bulge = 1 - Math.abs(ny * 2 - 1); // mais forte no meio
-          var flow = 0.5 + 0.5 * Math.sin(x * 0.32 + pt2 * 2.4 + 2.2 * Math.sin(y * 0.48 - pt2 * 1.1));
-          var v = spec * bulge * (0.35 + 0.65 * flow) * (0.15 + 0.85 * gate);
-          if (v < 0.05) continue;
-          if (v > 1) v = 1;
-          var ch = ramp[Math.min(ramp.length - 1, Math.floor(v * ramp.length))];
-          var col = mono ? [0, 0, 100] : CV.pal(m, Math.floor(v * 3), t);
-          c.fillStyle = CV.hsla(col, 0.12 + v * 0.85);
-          c.fillText(ch, x * cell + cell / 2, y * cell + cell / 2);
-        }
-      }
-    }
-  });
 
   /* ================= ONDAS EM CAMADAS ================= */
   CV.register('wavelayers', {
-    name: 'Ondas em camadas', group: 'Arte',
-    defaults: defs({ glow: 3, camadas: 14 }),
+    name: 'Camadas', group: 'Arte', desc: 'Ondas empilhadas em relevo',
+    defaults: defs({ camadas: 14 }),
     schema: COMMON.concat([{ k: 'camadas', label: 'Camadas', min: 6, max: 24, step: 1, def: 14 }]),
     init: function (m) { m.st.hist = []; m.st.skip = 0; },
     draw: function (m, d, dt, t) {
@@ -995,7 +1717,7 @@
       var K = Math.round(s.camadas);
       // guarda um retrato da onda a cada 3 frames
       if (++m.st.skip % Math.max(1, Math.round(3 / s.speed)) === 0) {
-        var td = d.time, P = 96, snap = new Float32Array(P);
+        var td = d.time, P = CV.det(m, 96, 288), snap = new Float32Array(P);
         var stp = Math.floor(td.length / P);
         for (var i = 0; i < P; i++) snap[i] = td[i * stp];
         m.st.hist.push(snap);
@@ -1012,9 +1734,8 @@
         var amp = h * 0.16 * s.sens * (0.4 + depth * 0.6) * (0.15 + 0.85 * gate);
         var col = mono ? [0, 0, 100] : CV.pal(m, j, t);
         var alpha = 0.08 + depth * 0.72;
-        if (depth > 0.9 && s.glow > 0) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1); }
         c.strokeStyle = CV.hsla(col, alpha);
-        c.lineWidth = 0.8 + depth * 0.7;
+        c.lineWidth = CV.lw(m, 0.8 + depth * 0.7);
         c.beginPath();
         for (var x2 = 0; x2 < snap2.length; x2++) {
           var px = x2 / (snap2.length - 1) * w;
@@ -1022,15 +1743,14 @@
           x2 === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
         }
         c.stroke();
-        c.shadowBlur = 0;
       }
     }
   });
 
   /* ================= FITA (linhas de seda) ================= */
   CV.register('silk', {
-    name: 'Fita (seda)', group: 'Arte',
-    defaults: defs({ trail: 0.82, fios: 5, glow: 5 }),
+    name: 'Fita', group: 'Arte', desc: 'Fios de seda perseguindo o som',
+    defaults: defs({ trail: 0.82, fios: 5 }),
     schema: COMMON.concat([
       { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.82 },
       { k: 'fios', label: 'Fios', min: 2, max: 9, step: 1, def: 5 }
@@ -1038,8 +1758,7 @@
     init: function (m) { m.st.threads = []; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
+      CV.fade(m, c, s.trail);
       if (!d) return;
       var want = Math.round(s.fios);
       while (m.st.threads.length < want) {
@@ -1076,142 +1795,38 @@
         hx += (Math.random() - 0.5) * high * 14;
         hy += (Math.random() - 0.5) * high * 14;
         th.hist.push([hx, hy]);
-        if (th.hist.length > 70) th.hist.shift();
-        var nseg = th.hist.length;
-        for (var k2 = 1; k2 < nseg; k2++) {
-          var age = k2 / nseg; // 1 = mais recente
+        // o rastro acompanha o painel: 70 pontos em tela cheia é uma fita curtinha
+        if (th.hist.length > CV.det(m, 70, 150)) th.hist.shift();
+        /* ERA O PIOR GARGALO DO APP: 5 fios × 69 segmentos = 345 traços por quadro,
+           cada um com uma cor nova e uma sombra desfocada. 20 mil desfoques por segundo.
+           Agora o rastro é dividido em 6 pedaços de idade: cada pedaço é UM traço
+           contínuo, com uma cor e uma espessura. 30 traços por quadro no lugar de 345,
+           e a fita fica mais limpa porque a linha não quebra a cada segmento. */
+        var nseg = th.hist.length, SEG = 6;
+        if (nseg < 3) return;
+        for (var g = 0; g < SEG; g++) {
+          var a0 = Math.floor(nseg * g / SEG), a1 = Math.floor(nseg * (g + 1) / SEG);
+          if (a1 - a0 < 2) continue;
+          var age = (g + 0.5) / SEG;
           var cl = CV.pal(m, i + Math.floor(age * 2), t + age * 0.4);
           c.strokeStyle = CV.hsla(cl, (0.05 + age * 0.5) * (0.1 + 0.9 * gate));
-          c.lineWidth = 0.5 + age * 2.6 * (0.6 + bass);
-          c.shadowBlur = CV.isLight(m) ? 0 : s.glow * age; c.shadowColor = CV.hsla(cl, 1);
+          c.lineWidth = CV.lw(m, 0.5 + age * 2.6 * (0.6 + bass));
           c.beginPath();
-          c.moveTo(th.hist[k2 - 1][0], th.hist[k2 - 1][1]);
-          c.lineTo(th.hist[k2][0], th.hist[k2][1]);
+          c.moveTo(th.hist[a0][0], th.hist[a0][1]);
+          for (var k2 = a0 + 1; k2 < a1; k2++) c.lineTo(th.hist[k2][0], th.hist[k2][1]);
           c.stroke();
         }
       });
-      c.shadowBlur = 0;
       CV.blend(m, c, false);
     }
   });
 
-  /* ================= TERRENO (ondas em camadas viram montanha 3D) ================= */
-  CV.register('terreno', {
-    name: 'Terreno', group: 'Arte',
-    defaults: defs({ glow: 3, camadas: 18, relevo: 1 }),
-    schema: COMMON.concat([
-      { k: 'camadas', label: 'Cordilheiras', min: 8, max: 32, step: 1, def: 18 },
-      { k: 'relevo', label: 'Relevo do grave', min: 0, max: 2, step: 0.05, def: 1 }
-    ]),
-    init: function (m) { m.st.hist = []; m.st.skip = 0; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      var K = Math.round(s.camadas);
-      // um retrato da onda a cada poucos frames: a cordilheira rola pra frente
-      if (++m.st.skip % Math.max(1, Math.round(2 / s.speed)) === 0) {
-        var td = d.time, P = 128, snap0 = new Float32Array(P), stp = Math.floor(td.length / P);
-        for (var i0 = 0; i0 < P; i0++) snap0[i0] = td[i0 * stp];
-        m.st.hist.push({ w: snap0, bass: d.bass * s.sens });
-        if (m.st.hist.length > K) m.st.hist.shift();
-      }
-      var hist = m.st.hist, L = hist.length;
-      if (!L) return;
-      var mono = CV.isMono(m), cx = w / 2;
-      var horizon = h * 0.28, span = h - horizon;
-      // de trás (perto do horizonte, pequeno) pra frente (embaixo, grande): o de frente cobre o de trás = 3D
-      for (var j = 0; j < L; j++) {
-        var depth = j / Math.max(1, L - 1);
-        var row = hist[L - 1 - j];
-        var persp = 0.28 + depth * 0.72;
-        var yBase = horizon + Math.pow(depth, 1.35) * span;
-        var amp = h * 0.16 * s.sens * (0.35 + depth * 0.9) * (1 + row.bass * 1.6 * s.relevo) * (0.15 + 0.85 * gate);
-        var snap = row.w, PN = snap.length;
-        var col = mono ? [0, 0, 92] : CV.pal(m, j, t);
-        c.beginPath();
-        c.moveTo(cx - (w / 2) * persp, yBase);
-        for (var x2 = 0; x2 < PN; x2++) {
-          var px = cx + ((x2 / (PN - 1)) - 0.5) * w * persp;
-          var py = yBase - Math.abs(snap[x2]) * amp - snap[x2] * amp * 0.35;
-          c.lineTo(px, py);
-        }
-        c.lineTo(cx + (w / 2) * persp, yBase);
-        c.lineTo(cx + (w / 2) * persp, h);
-        c.lineTo(cx - (w / 2) * persp, h);
-        c.closePath();
-        var g = c.createLinearGradient(0, yBase - amp, 0, yBase + span * 0.25);
-        g.addColorStop(0, CV.hsla([col[0], col[1], Math.min(82, col[2] * (0.6 + depth))], 0.92));
-        g.addColorStop(1, 'rgba(5,5,8,' + (0.85 + depth * 0.15) + ')');
-        c.fillStyle = g; c.fill();
-        if (depth > 0.55 && s.glow > 0) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1); }
-        c.strokeStyle = CV.hsla([col[0], col[1], Math.min(92, 55 + depth * 45)], 0.32 + depth * 0.6);
-        c.lineWidth = 0.6 + depth * 1.2;
-        c.beginPath();
-        for (var x3 = 0; x3 < PN; x3++) {
-          var px2 = cx + ((x3 / (PN - 1)) - 0.5) * w * persp;
-          var py2 = yBase - Math.abs(snap[x3]) * amp - snap[x3] * amp * 0.35;
-          x3 === 0 ? c.moveTo(px2, py2) : c.lineTo(px2, py2);
-        }
-        c.stroke();
-        c.shadowBlur = 0;
-      }
-    }
-  });
 
-  /* ================= HARMONÓGRAFO (pêndulos desenhando teias finas) ================= */
-  CV.register('harmonografo', {
-    name: 'Harmonógrafo', group: 'Arte',
-    defaults: defs({ trail: 0.06, glow: 4, fios: 2 }),
-    schema: COMMON.concat([
-      { k: 'trail', label: 'Persistência', min: 0.01, max: 0.2, step: 0.005, def: 0.04 },
-      { k: 'fios', label: 'Canetas', min: 1, max: 4, step: 1, def: 2 }
-    ]),
-    init: function (m) { m.st.pt = 0; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * s.speed * (0.05 + gate * 1.2 + d.beatPulse * 0.4);
-      var pt2 = m.st.pt, cx = w / 2, cy = h / 2, sc = Math.min(w, h) * 0.4;
-      // frequências dos pêndulos levemente destoadas pelo áudio: a teia respira
-      var f1 = 2 + Math.round(d.bass * s.sens * 3), f2 = 3 + Math.round(d.high * s.sens * 4);
-      var amp = sc * (0.4 + d.level * 2.2 * s.sens) * (0.2 + 0.8 * gate);
-      var pens = Math.round(s.fios), mono = CV.isMono(m);
-      var a2 = (m.mouse && m.mouse.over) ? (m.mouse.x / w - 0.5) * 2 : 0;
-      var ca = Math.cos(a2), sa = Math.sin(a2);
-      CV.blend(m, c);
-      c.lineWidth = 0.7;
-      for (var p = 0; p < pens; p++) {
-        var col = mono ? [0, 0, 94] : CV.pal(m, p, t);
-        var ph = pt2 * 0.5 + p * 1.7, phase = p * 0.6;
-        c.strokeStyle = CV.hsla(col, 0.1 + 0.35 * gate);
-        if (s.glow > 0) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1); }
-        c.beginPath();
-        var STEPS = 480;
-        for (var i = 0; i <= STEPS; i++) {
-          var u = i / STEPS * 6.283 * 3;
-          var env = Math.exp(-u * 0.02 * (0.6 + p * 0.1));
-          var x = (Math.sin(f1 * u + ph) + Math.sin((f1 + 0.4) * u + phase) * 0.4) * amp * env;
-          var y = (Math.sin(f2 * u + phase) + Math.sin((f2 + 0.3) * u - ph) * 0.4) * amp * env;
-          var xr = x * ca - y * sa, yr = x * sa + y * ca;
-          i === 0 ? c.moveTo(cx + xr, cy + yr) : c.lineTo(cx + xr, cy + yr);
-        }
-        c.stroke();
-        c.shadowBlur = 0;
-      }
-      CV.blend(m, c, false);
-    }
-  });
 
   /* ================= ENXAME (bando de pontos: beat espanta, música reagrupa) ================= */
   CV.register('enxame', {
-    name: 'Enxame', group: 'Arte',
-    defaults: defs({ glow: 2, dens: 1, trail: 0.7 }),
+    name: 'Enxame', group: 'Arte', desc: 'Constelação que junta e rompe no beat',
+    defaults: defs({ dens: 1, trail: 0.7 }),
     schema: COMMON.concat([
       { k: 'dens', label: 'Tamanho do bando', min: 0.3, max: 2, step: 0.05, def: 1 },
       { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.7 }
@@ -1219,11 +1834,10 @@
     init: function (m) { m.st.ps = []; m.st.pt = 0; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
+      CV.fade(m, c, s.trail);
       if (!d) return;
       var gate = CV.gate(m, d, dt);
-      var ps = m.st.ps, want = Math.round(90 * s.dens);
+      var ps = m.st.ps, want = Math.round(CV.det(m, 90, 170) * s.dens);
       while (ps.length < want) ps.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20, b: Math.random() });
       if (ps.length > want) ps.length = want;
       if (m.st.pt === undefined) m.st.pt = 0;
@@ -1247,25 +1861,45 @@
         if (p.x < 0) { p.x = 0; p.vx *= -0.6; } else if (p.x > w) { p.x = w; p.vx *= -0.6; }
         if (p.y < 0) { p.y = 0; p.vy *= -0.6; } else if (p.y > h) { p.y = h; p.vy *= -0.6; }
       }
-      // fios entre nós próximos. PERFORMANCE: junta os fios em 4 camadas de opacidade
-      // e desenha 4 traços no total, em vez de um traço por par (eram milhares por quadro).
-      var linkD = Math.min(w, h) * (0.22 + 0.12 * gate), linkD2 = linkD * linkD;
+      /* fios entre nós próximos. PERFORMANCE: junta os fios em 4 camadas de opacidade
+         e desenha 4 traços no total, em vez de um traço por par (eram milhares por quadro).
+
+         O TETO DO SLIDER. O que custa aqui é a QUANTIDADE DE FIOS. Ela cresce com
+         o quadrado do bando E com o quanto ele se aperta em volta do alvo: no
+         "Tamanho do bando" máximo davam 13.379 fios por quadro contra 3.544 no
+         padrão, quase 4x o custo num arrasto de slider.
+         Agora o alcance do fio se ajusta sozinho pra manter a conta perto de 3.500,
+         que é a densidade do padrão. Ele encolhe quando o bando aperta e volta
+         quando ele espalha, devagar (a mudança leva ~0,3s), então não pisca.
+         A imagem também melhora: com alcance fixo, o bando cheio virava um borrão
+         branco sólido em vez de constelação. */
+      var LINK_BUDGET = 3500;
+      if (m.st.dk === undefined) m.st.dk = 1;
+      var linkD = Math.min(w, h) * (0.22 + 0.12 * gate) * m.st.dk, linkD2 = linkD * linkD;
       CV.blend(m, c);
       var lcol = mono ? [0, 0, 100] : CV.pal(m, 0, t);
-      c.lineWidth = 1;
+      c.lineWidth = CV.lw(m, 1);
       var BK = 4, buckets = m.st.bk;
       if (!buckets) { buckets = m.st.bk = []; for (i = 0; i < BK; i++) buckets.push([]); }
       for (i = 0; i < BK; i++) buckets[i].length = 0;
+      var links = 0;
       for (i = 0; i < n; i++) {
         var a = ps[i];
         for (j = i + 1; j < n; j++) {
           var b = ps[j], ddx = a.x - b.x, ddy = a.y - b.y, dd2 = ddx * ddx + ddy * ddy;
           if (dd2 > linkD2) continue;
+          if (++links > LINK_BUDGET) break;      // rede de segurança do quadro atual
           var near = 1 - Math.sqrt(dd2) / linkD;
           var bi = (near * near * BK) | 0; if (bi > BK - 1) bi = BK - 1;
           buckets[bi].push(a.x, a.y, b.x, b.y);
         }
+        if (links > LINK_BUDGET) break;
       }
+      // realimentação: aperta o alcance quando passou do orçamento, solta quando sobrou
+      var over = links / LINK_BUDGET;
+      var dkT = over > 1 ? m.st.dk / Math.sqrt(over) : Math.min(1, m.st.dk * 1.03);
+      m.st.dk += (dkT - m.st.dk) * Math.min(1, dt * 3.5);
+      if (m.st.dk < 0.2) m.st.dk = 0.2; else if (m.st.dk > 1) m.st.dk = 1;
       for (i = 0; i < BK; i++) {
         var arr = buckets[i]; if (!arr.length) continue;
         c.strokeStyle = CV.hsla(lcol, ((i + 0.5) / BK) * (0.05 + 0.5 * gate));
@@ -1273,21 +1907,28 @@
         for (j = 0; j < arr.length; j += 4) { c.moveTo(arr[j], arr[j + 1]); c.lineTo(arr[j + 2], arr[j + 3]); }
         c.stroke();
       }
-      // nós: dois passes (comuns e estrelas), com o brilho ligado uma vez só
+      /* nós: 8 passes (4 cores × 2 tamanhos), cada um com UMA troca de cor e UM caminho.
+         Antes era uma paleta nova e uma frase de cor por nó. São só 90 nós, então varrer
+         a lista 8 vezes sai mais barato que montar listas separadas (medido). */
       var alphaN = (0.25 + 0.75 * gate);
-      c.shadowBlur = 0;
-      for (i = 0; i < n; i++) {
-        var q = ps[i]; if (q.b > 0.85) continue;
-        c.fillStyle = CV.hsla(mono ? [0, 0, 100] : CV.pal(m, (q.b * 4) | 0, t), 0.5 * alphaN);
-        c.fillRect(q.x - 1.2, q.y - 1.2, 2.4, 2.4);
+      var CN = mono ? 1 : 4;
+      for (var ci2 = 0; ci2 < CN; ci2++) {
+        var ncol = mono ? [0, 0, 100] : CV.pal(m, ci2, t);
+        for (var bg = 0; bg < 2; bg++) {
+          var sz = bg ? 4 : 2.4, off = sz * 0.5, any = false;
+          c.beginPath();
+          for (j = 0; j < n; j++) {
+            var q = ps[j];
+            if ((q.b > 0.85) !== (bg === 1)) continue;
+            if (!mono && (((q.b * 4) | 0) & 3) !== ci2) continue;
+            c.rect(q.x - off, q.y - off, sz, sz);
+            any = true;
+          }
+          if (!any) continue;
+          c.fillStyle = CV.hsla(ncol, (bg ? 0.85 : 0.5) * alphaN);
+          c.fill();
+        }
       }
-      if (s.glow > 0) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(lcol, 1); }
-      for (i = 0; i < n; i++) {
-        var q2 = ps[i]; if (q2.b <= 0.85) continue;
-        c.fillStyle = CV.hsla(mono ? [0, 0, 100] : CV.pal(m, (q2.b * 4) | 0, t), 0.85 * alphaN);
-        c.fillRect(q2.x - 2, q2.y - 2, 4, 4);
-      }
-      c.shadowBlur = 0;
       CV.blend(m, c, false);
     }
   });
@@ -1320,7 +1961,7 @@
   ].join('\n');
 
   CV.register('aurora', {
-    name: 'Aurora', group: 'Arte', webgl: true,
+    name: 'Aurora', group: 'Arte', webgl: true, desc: 'Cortinas de luz no céu',
     defaults: defs({ dobra: 1, cortinas: 6 }),
     schema: [
       { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
@@ -1337,165 +1978,13 @@
     }
   });
 
-  /* ================= ÓRBITA (partículas gravitando um sol que pulsa no grave) ================= */
-  CV.register('orbita', {
-    name: 'Órbita', group: 'Arte',
-    defaults: defs({ dens: 1, trail: 0.8, gravidade: 1 }),
-    schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'dens', label: 'Partículas', min: 0.3, max: 2, step: 0.05, def: 1 },
-      { k: 'gravidade', label: 'Gravidade do sol', min: 0.3, max: 2.5, step: 0.05, def: 1 },
-      { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.8 }
-    ],
-    init: function (m) { m.st.ps = []; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      var cx = w / 2, cy = h / 2;
-      if (m.mouse && m.mouse.over) { cx = m.mouse.x; cy = m.mouse.y; }
-      var base = Math.min(w, h);
-      var G = base * base * (0.6 + d.bass * s.sens * 1.3) * s.gravidade; // gravidade sobe no grave
-      var sunR = base * (0.02 + (0.05 + d.bass * s.sens * 0.12) * (0.3 + 0.7 * gate)) + base * d.beatPulse * 0.05;
-      var ps = m.st.ps, want = Math.round(360 * s.dens);
-      function spawn(p) {
-        var a = Math.random() * 6.283, rr = base * (0.15 + Math.random() * 0.35);
-        var vo = Math.sqrt(G / rr);
-        p.x = cx + Math.cos(a) * rr; p.y = cy + Math.sin(a) * rr;
-        p.vx = -Math.sin(a) * vo; p.vy = Math.cos(a) * vo;
-      }
-      while (ps.length < want) { var np = { x: 0, y: 0, vx: 0, vy: 0, b: Math.random() }; spawn(np); ps.push(np); }
-      if (ps.length > want) ps.length = want;
-      var mono = CV.isMono(m);
-      CV.blend(m, c);
-      for (var i = 0; i < ps.length; i++) {
-        var p = ps[i];
-        var dx = cx - p.x, dy = cy - p.y, r2 = dx * dx + dy * dy + 60, r = Math.sqrt(r2);
-        var a = G / r2, sp = s.speed;
-        p.vx += (dx / r) * a * dt; p.vy += (dy / r) * a * dt;
-        if (d.beat) { p.vx += (-dy / r) * base * 0.4; p.vy += (dx / r) * base * 0.4; } // beat chuta pra órbita
-        p.x += p.vx * dt * sp; p.y += p.vy * dt * sp;
-        if (r < sunR * 0.8 || r > base * 1.25) spawn(p);
-        var col = mono ? [0, 0, 100] : CV.pal(m, Math.floor(p.b * 4), t);
-        var spd = Math.min(1, (Math.abs(p.vx) + Math.abs(p.vy)) / (base * 0.9));
-        c.fillStyle = CV.hsla(col, (0.14 + spd * 0.6) * (0.2 + 0.8 * gate));
-        c.fillRect(p.x, p.y, 1.3, 1.3);
-      }
-      // o sol
-      var sunCol = mono ? [0, 0, 100] : CV.pal(m, 0, t);
-      var sg = c.createRadialGradient(cx, cy, 0, cx, cy, sunR * 2.6);
-      sg.addColorStop(0, CV.hsla([sunCol[0], sunCol[1], 94], 0.78 * (0.3 + 0.7 * gate)));
-      sg.addColorStop(0.4, CV.hsla(sunCol, 0.36 * (0.3 + 0.7 * gate)));
-      sg.addColorStop(1, CV.hsla(sunCol, 0));
-      c.fillStyle = sg;
-      c.fillRect(cx - sunR * 2.6, cy - sunR * 2.6, sunR * 5.2, sunR * 5.2);
-      CV.blend(m, c, false);
-    }
-  });
 
-  /* ================= MARÉ (interferência de ondas de várias fontes; não é alvo) ================= */
-  CV.register('mare', {
-    name: 'Maré', group: 'Arte',
-    defaults: defs({ cel: 15, ondulacao: 1 }),
-    schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'cel', label: 'Malha', min: 8, max: 30, step: 1, def: 15 },
-      { k: 'ondulacao', label: 'Ondulação', min: 0.4, max: 2.5, step: 0.05, def: 1 }
-    ],
-    init: function (m) { m.st.pt = 0; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * s.speed * (0.1 + gate * 1.4 + d.beatPulse * 0.5);
-      var pt2 = m.st.pt;
-      var cell = Math.max(6, s.cel), ond = s.ondulacao;
-      var cols = Math.ceil(w / cell) + 1, rows = Math.ceil(h / cell) + 1;
-      // três fontes em pontos diferentes, uma por banda: o cruzamento gera interferência (moiré), não anéis de alvo
-      var srcs = [
-        { x: w * 0.14, y: h * 0.52, k: 0.030 * ond, band: d.bass * s.sens },
-        { x: w * 0.86, y: h * 0.34, k: 0.052 * ond, band: d.high * s.sens },
-        { x: w * 0.50, y: h * 0.92, k: 0.041 * ond, band: d.mid * s.sens }
-      ];
-      if (m.mouse && m.mouse.over) { srcs[0].x = m.mouse.x; srcs[0].y = m.mouse.y; }
-      var mono = CV.isMono(m);
-      CV.blend(m, c);
-      for (var yi = 0; yi < rows; yi++) {
-        for (var xi = 0; xi < cols; xi++) {
-          var px = xi * cell, py = yi * cell, sum = 0;
-          for (var q = 0; q < 3; q++) {
-            var sq = srcs[q];
-            var dxs = px - sq.x, dys = py - sq.y, dr = Math.sqrt(dxs * dxs + dys * dys);
-            sum += Math.sin(dr * sq.k - pt2 * (1 + q * 0.4)) * (0.3 + sq.band * 2);
-          }
-          var v = sum / 3, inten = Math.max(0, v) * (0.2 + 0.8 * gate);
-          if (inten < 0.05) continue;
-          var col = mono ? [0, 0, 100] : CV.pal(m, Math.floor((0.5 + v * 0.5) * 4), t);
-          var sz = 0.6 + inten * (cell * 0.34);
-          c.fillStyle = CV.hsla(col, Math.min(0.9, 0.1 + inten));
-          c.fillRect(px - sz * 0.5, py - sz * 0.5, sz, sz);
-        }
-      }
-      CV.blend(m, c, false);
-    }
-  });
 
-  /* ================= CONTORNO (linhas de contorno do espectro empilhadas) ================= */
-  CV.register('contorno', {
-    name: 'Contorno', group: 'Arte',
-    defaults: defs({ glow: 4, camadas: 22 }),
-    schema: COMMON.concat([{ k: 'camadas', label: 'Camadas', min: 8, max: 40, step: 1, def: 22 }]),
-    init: function (m) { m.st.hist = []; m.st.skip = 0; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      var K = Math.round(s.camadas), P = 80;
-      if (++m.st.skip % Math.max(1, Math.round(2 / s.speed)) === 0) {
-        var f = d.freq, n = f.length, binHz = 22050 / n, snap = new Float32Array(P);
-        for (var i = 0; i < P; i++) {
-          var fr = 30 * Math.pow(16000 / 30, i / (P - 1));
-          var pos = fr / binHz, i0 = pos | 0; if (i0 > n - 2) i0 = n - 2;
-          var fa = pos - i0;
-          snap[i] = Math.pow((f[i0] * (1 - fa) + f[i0 + 1] * fa) / 255, 1.3);
-        }
-        m.st.hist.push(snap);
-        if (m.st.hist.length > K) m.st.hist.shift();
-      }
-      var hist = m.st.hist, L = hist.length;
-      if (!L) return;
-      var mono = CV.isMono(m), col = mono ? [0, 0, 100] : CV.pal(m, 0, t);
-      var pad = h * 0.1, span = h - pad * 2;
-      var amp = h * 0.34 * s.sens * (0.2 + 0.8 * gate);
-      if (m.mouse && m.mouse.over) amp *= 0.6 + (1 - m.mouse.y / h) * 0.9;
-      for (var j = 0; j < L; j++) {
-        var depth = j / Math.max(1, L - 1), snap2 = hist[j];
-        var yBase = pad + depth * span, a2 = amp * (0.35 + depth * 0.65), x, px, py;
-        c.beginPath(); c.moveTo(0, yBase);
-        for (x = 0; x < P; x++) { px = x / (P - 1) * w; py = yBase - snap2[x] * a2; c.lineTo(px, py); }
-        c.lineTo(w, yBase); c.closePath();
-        c.fillStyle = CV.bgOf(m); c.fill();
-        var lc = mono ? [0, 0, 55 + depth * 40] : [col[0], col[1], 42 + depth * 26];
-        if (s.glow > 0 && depth > 0.7) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(lc, 1); }
-        c.strokeStyle = CV.hsla(lc, 0.3 + depth * 0.6); c.lineWidth = 0.8 + depth * 0.7;
-        c.beginPath();
-        for (x = 0; x < P; x++) { px = x / (P - 1) * w; py = yBase - snap2[x] * a2; x === 0 ? c.moveTo(px, py) : c.lineTo(px, py); }
-        c.stroke(); c.shadowBlur = 0;
-      }
-    }
-  });
 
   /* ================= CORDAS (cordas verticais que vibram por banda) ================= */
   CV.register('cordas', {
-    name: 'Cordas', group: 'Arte',
-    defaults: defs({ glow: 6, cordas: 28, tensao: 1 }),
+    name: 'Cordas', group: 'Arte', desc: 'Harpa de cordas que vibram por banda',
+    defaults: defs({ cordas: 28, tensao: 1 }),
     schema: COMMON.concat([
       { k: 'cordas', label: 'Nº de cordas', min: 10, max: 48, step: 1, def: 28 },
       { k: 'tensao', label: 'Tensão', min: 0.3, max: 2.5, step: 0.05, def: 1 }
@@ -1511,263 +2000,57 @@
         for (var q = 0; q < N; q++) m.st.mode[q] = 1 + (q % 3);
       }
       var amp = m.st.amp, ph = m.st.ph, mode = m.st.mode;
-      var f = d.freq, n = f.length, binHz = 22050 / n, mono = CV.isMono(m);
+      var f = d.freq, n = f.length, binHz = d.binHz || ((d.sr || 48000) / 2 / n), mono = CV.isMono(m);
       var pad = w * 0.06, gapx = (w - pad * 2) / Math.max(1, N - 1);
+      // tabela de bins e de Hz pronta (era um Math.pow por corda, por quadro)
+      var tb = CV.binTableFull(m, 'cd', N, n, binHz, 45, 7000, false);
+      var bins = tb.bins, hzs = tb.hz;
+      /* envelope e seno do modo por altura, prontos: eram 3 senos e 2 divisões por
+         PONTO da corda (28 cordas × ~25 pontos = 2100 senos por quadro). */
+      var ys = m.st._ys;
+      if (!ys || m.st._ysh !== h) {
+        var stepY = Math.max(4, Math.min(10, h / 24));
+        var cnt = Math.floor(h / stepY) + 1;
+        ys = m.st._ys = { y: new Float32Array(cnt), env: new Float32Array(cnt), u: new Float32Array(cnt) };
+        for (var yq = 0; yq < cnt; yq++) {
+          var yy = Math.min(h, yq * stepY);
+          ys.y[yq] = yy; ys.u[yq] = Math.PI * yy / h; ys.env[yq] = Math.sin(Math.PI * yy / h);
+        }
+        m.st._ysh = h;
+      }
+      var yv = ys.y, yenv = ys.env, yu = ys.u, YN = yv.length;
       for (var i = 0; i < N; i++) {
-        var fr = 45 * Math.pow(7000 / 45, i / Math.max(1, N - 1));
-        var bin = Math.min(n - 1, Math.round(fr / binHz));
-        var e = Math.pow(f[bin] / 255, 1.2) * s.sens;
+        var e = Math.pow(f[bins[i]] / 255, 1.2) * s.sens;
         amp[i] += (e - amp[i]) * (e > amp[i] ? 0.5 : 0.06);
         var xi = pad + i * gapx;
         if (m.mouse && m.mouse.over && Math.abs(m.mouse.x - xi) < gapx * 0.6) amp[i] = Math.min(1, amp[i] + 0.5);
         if (d.beat) amp[i] = Math.min(1, amp[i] + 0.22 * (0.4 + i / N));
-        ph[i] += dt * (6 + fr * 0.01) * s.tensao * (0.5 + gate);
+        ph[i] += dt * (6 + hzs[i] * 0.01) * s.tensao * (0.5 + gate);
         var A = amp[i] * gapx * 0.9 * (0.2 + 0.8 * gate);
         var col = mono ? [0, 0, 100] : CV.pal(m, i % 4, t);
         var lum = Math.min(92, 40 + amp[i] * 45);
-        if (s.glow > 0) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow * amp[i]; c.shadowColor = CV.hsla(col, 1); }
         c.strokeStyle = CV.hsla([col[0], col[1], lum], 0.22 + amp[i] * 0.7);
-        c.lineWidth = 0.8 + amp[i] * 1.4;
+        c.lineWidth = CV.lw(m, 0.8 + amp[i] * 1.4);
         c.beginPath();
-        for (var y = 0; y <= h; y += 8) {
-          var env = Math.sin(Math.PI * y / h);
-          var xx = xi + A * env * Math.sin(mode[i] * Math.PI * y / h + ph[i]);
-          y === 0 ? c.moveTo(xx, y) : c.lineTo(xx, y);
+        var mi = mode[i], phi = ph[i];
+        for (var yq2 = 0; yq2 < YN; yq2++) {
+          var xx = xi + A * yenv[yq2] * Math.sin(mi * yu[yq2] + phi);
+          yq2 === 0 ? c.moveTo(xx, yv[yq2]) : c.lineTo(xx, yv[yq2]);
         }
-        c.stroke(); c.shadowBlur = 0;
+        c.stroke();
       }
     }
   });
 
-  /* ================= TINTA (gotas de tinta que difundem no beat) ================= */
-  CV.register('tinta', {
-    name: 'Tinta', group: 'Arte',
-    defaults: defs({ gotas: 1, trail: 0.14 }),
-    schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'gotas', label: 'Densidade', min: 0.4, max: 2.5, step: 0.05, def: 1 },
-      { k: 'trail', label: 'Difusão', min: 0.04, max: 0.4, step: 0.01, def: 0.14 }
-    ],
-    init: function (m) { m.st.drops = []; m.st.pt = 0; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = 'rgba(6,6,8,' + s.trail + ')';
-      c.fillRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt), drops = m.st.drops;
-      m.st.pt += dt * s.speed * (0.2 + gate);
-      var mono = CV.isMono(m);
-      if (d.beat && drops.length < 60 * s.gotas) {
-        var nDrop = Math.round(1 + 2 * s.gotas);
-        for (var q = 0; q < nDrop; q++) {
-          var mx = (m.mouse && m.mouse.over) ? m.mouse.x : w * (0.15 + 0.7 * Math.random());
-          var my = (m.mouse && m.mouse.over) ? m.mouse.y : h * (0.15 + 0.7 * Math.random());
-          drops.push({ x: mx, y: my, r: 2, rMax: Math.min(w, h) * (0.1 + 0.28 * Math.random()) * (0.6 + d.bass), life: 1, ci: (Math.random() * 4) | 0, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16 });
-        }
-      }
-      CV.blend(m, c);
-      for (var i = drops.length - 1; i >= 0; i--) {
-        var p = drops[i];
-        p.r += (p.rMax - p.r) * Math.min(1, dt * 2.5);
-        p.x += p.vx * dt; p.y += p.vy * dt;
-        p.life -= dt * 0.35;
-        if (p.life <= 0) { drops.splice(i, 1); continue; }
-        var col = mono ? [0, 0, 100] : CV.pal(m, p.ci, t);
-        var rr = p.r * (0.5 + 0.5 * gate) * (1 + d.bass * 0.5);
-        var g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr);
-        g.addColorStop(0, CV.hsla(col, 0.22 * p.life));
-        g.addColorStop(0.5, CV.hsla(col, 0.08 * p.life));
-        g.addColorStop(1, CV.hsla(col, 0));
-        c.fillStyle = g;
-        c.beginPath(); c.arc(p.x, p.y, rr, 0, 6.283); c.fill();
-      }
-      CV.blend(m, c, false);
-    }
-  });
 
-  /* ================= BARRAS 3D (equalizador em perspectiva, cidade que pulsa) ================= */
-  CV.register('barras', {
-    name: 'Barras 3D', group: 'Arte',
-    defaults: defs({ glow: 3, barras: 32, prof: 1 }),
-    schema: COMMON.concat([
-      { k: 'barras', label: 'Nº de barras', min: 12, max: 64, step: 1, def: 32 },
-      { k: 'prof', label: 'Profundidade', min: 0.3, max: 2, step: 0.05, def: 1 }
-    ]),
-    init: function (m) { m.st.vals = null; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt), N = Math.round(s.barras);
-      if (!m.st.vals || m.st.vals.length !== N) m.st.vals = new Float32Array(N);
-      var vals = m.st.vals, f = d.freq, n = f.length, binHz = 22050 / n, mono = CV.isMono(m);
-      var depth = 10 + 22 * s.prof;
-      var mt = (m.mouse && m.mouse.over) ? (m.mouse.x / w - 0.5) : 0;
-      var dxp = depth * 0.7 * (1 - mt), dyp = -depth * 0.7;
-      var pad = w * 0.04, bw = (w - pad * 2 - Math.abs(dxp)) / N;
-      var baseY = h * 0.86, maxH = h * 0.66;
-      for (var i = 0; i < N; i++) {
-        var fr = 40 * Math.pow(14000 / 40, i / Math.max(1, N - 1));
-        var bin = Math.min(n - 1, Math.round(fr / binHz));
-        var tilt = 1 + Math.min(2.5, Math.pow(fr / 120, 0.28)) * 0.4;
-        var e = Math.min(1, Math.pow(f[bin] / 255, 1.35) * s.sens * tilt);
-        vals[i] += (e - vals[i]) * (e > vals[i] ? 0.55 : 0.12);
-        var bh = vals[i] * maxH * (0.2 + 0.8 * gate) * (1 + d.bass * 0.25);
-        var x0 = pad + i * bw, x1 = x0 + bw * 0.86, yTop = baseY - bh;
-        var col = mono ? [0, 0, 78] : CV.pal(m, i % 4, t);
-        var lum = 28 + vals[i] * 42;
-        c.fillStyle = CV.hsla([col[0], col[1], lum], 0.92);
-        c.fillRect(x0, yTop, x1 - x0, baseY - yTop);
-        c.fillStyle = CV.hsla([col[0], col[1], Math.min(92, lum + 26)], 0.96);
-        c.beginPath(); c.moveTo(x0, yTop); c.lineTo(x0 + dxp, yTop + dyp); c.lineTo(x1 + dxp, yTop + dyp); c.lineTo(x1, yTop); c.closePath(); c.fill();
-        c.fillStyle = CV.hsla([col[0], col[1], Math.max(8, lum - 16)], 0.96);
-        c.beginPath(); c.moveTo(x1, yTop); c.lineTo(x1 + dxp, yTop + dyp); c.lineTo(x1 + dxp, baseY + dyp); c.lineTo(x1, baseY); c.closePath(); c.fill();
-        if (s.glow > 0 && vals[i] > 0.5) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1); c.fillStyle = CV.hsla([col[0], col[1], 90], 0.9); c.fillRect(x0, yTop, x1 - x0, 2); c.shadowBlur = 0; }
-      }
-      c.strokeStyle = CV.gridInk(m, 0.08); c.lineWidth = 1;
-      c.beginPath(); c.moveTo(pad, baseY + 0.5); c.lineTo(w - pad, baseY + 0.5); c.stroke();
-    }
-  });
 
-  /* ================= COLMEIA (grade hexagonal, equalizador de favos) ================= */
-  CV.register('colmeia', {
-    name: 'Colmeia', group: 'Arte',
-    defaults: defs({ glow: 4, cel: 16 }),
-    schema: COMMON.concat([{ k: 'cel', label: 'Tamanho do favo', min: 10, max: 34, step: 1, def: 16 }]),
-    init: function (m) { m.st.vals = null; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      var R = Math.max(7, s.cel), hx = R * 1.5, hy = Math.sqrt(3) * R;
-      var cols = Math.max(1, Math.ceil(w / hx) + 1), rows = Math.max(1, Math.ceil(h / hy) + 1);
-      if (!m.st.vals || m.st.vals.length !== cols) m.st.vals = new Float32Array(cols);
-      var vals = m.st.vals, f = d.freq, n = f.length, binHz = 22050 / n, mono = CV.isMono(m), ci, ri;
-      for (ci = 0; ci < cols; ci++) {
-        var fr = 40 * Math.pow(13000 / 40, ci / Math.max(1, cols - 1));
-        var bin = Math.min(n - 1, Math.round(fr / binHz));
-        var tilt = 1 + Math.min(2.5, Math.pow(fr / 120, 0.28)) * 0.4;
-        var e = Math.min(1, Math.pow(f[bin] / 255, 1.35) * s.sens * tilt);
-        vals[ci] += (e - vals[ci]) * (e > vals[ci] ? 0.5 : 0.12);
-      }
-      function hexPath(cx, cy) {
-        c.beginPath();
-        for (var k = 0; k < 6; k++) {
-          var a = Math.PI / 3 * k, px = cx + R * 0.9 * Math.cos(a), py = cy + R * 0.9 * Math.sin(a);
-          k === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
-        }
-        c.closePath();
-      }
-      for (ci = 0; ci < cols; ci++) {
-        var cx = ci * hx, level = vals[ci] * (0.2 + 0.8 * gate);
-        var col = mono ? [0, 0, 90] : CV.pal(m, ci % 4, t);
-        for (ri = 0; ri < rows; ri++) {
-          var cy = ri * hy + (ci % 2 ? hy / 2 : 0);
-          var bottomFrac = (rows - 1 - ri) / Math.max(1, rows - 1);
-          var lit = level - bottomFrac;
-          if (lit > 0.02) {
-            var b = Math.min(1, lit * 3);
-            if (s.glow > 0 && b > 0.7) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1); }
-            c.fillStyle = CV.hsla([col[0], col[1], (mono ? 55 : 40) + b * 35], 0.9);
-            hexPath(cx, cy); c.fill(); c.shadowBlur = 0;
-          } else {
-            c.strokeStyle = 'rgba(255,255,255,0.05)'; c.lineWidth = 1;
-            hexPath(cx, cy); c.stroke();
-          }
-        }
-      }
-    }
-  });
 
-  /* ================= VITRAL (células irregulares que pulsam por banda) ================= */
-  CV.register('vitral', {
-    name: 'Vitral', group: 'Arte',
-    defaults: defs({ glow: 0, cel: 24 }),
-    schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
-      { k: 'cel', label: 'Tamanho da célula', min: 14, max: 46, step: 1, def: 24 }
-    ],
-    init: function (m) { m.st.jit = null; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.bgOf(m); c.fillRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt), cell = Math.max(12, s.cel);
-      var cols = Math.ceil(w / cell) + 1, rows = Math.ceil(h / cell) + 1, i;
-      if (!m.st.jit || m.st.jc !== cols || m.st.jr !== rows) {
-        m.st.jc = cols; m.st.jr = rows;
-        var J = new Float32Array((cols + 1) * (rows + 1) * 2);
-        for (i = 0; i < (cols + 1) * (rows + 1); i++) { J[i * 2] = (Math.random() - 0.5) * cell * 0.6; J[i * 2 + 1] = (Math.random() - 0.5) * cell * 0.6; }
-        m.st.jit = J; m.st.band = new Float32Array(cols * rows);
-        for (i = 0; i < cols * rows; i++) m.st.band[i] = Math.random();
-      }
-      var J2 = m.st.jit, band = m.st.band, mono = CV.isMono(m);
-      function vtx(ix, iy) { var idx = (iy * (cols + 1) + ix) * 2; return [ix * cell + J2[idx], iy * cell + J2[idx + 1]]; }
-      var bands = [d.bass, d.mid, d.high];
-      for (var yi = 0; yi < rows; yi++) {
-        for (var xi = 0; xi < cols; xi++) {
-          var bi = band[yi * cols + xi], bandIdx = bi < 0.4 ? 0 : bi < 0.7 ? 1 : 2;
-          var energy = Math.min(1, bands[bandIdx] * s.sens * 1.4) * (0.15 + 0.85 * gate);
-          var a = vtx(xi, yi), b2 = vtx(xi + 1, yi), cc = vtx(xi + 1, yi + 1), dd = vtx(xi, yi + 1);
-          var col = mono ? [0, 0, 55 + energy * 35] : CV.pal(m, bandIdx, t);
-          c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b2[0], b2[1]); c.lineTo(cc[0], cc[1]); c.lineTo(dd[0], dd[1]); c.closePath();
-          c.fillStyle = CV.hsla([col[0], col[1], mono ? col[2] : 22 + energy * 45], 0.35 + energy * 0.6);
-          c.fill();
-          c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 1.2; c.stroke();
-        }
-      }
-    }
-  });
 
-  /* ================= CASCATA (chuva de luz: cada faixa cai numa coluna) ================= */
-  CV.register('cascata', {
-    name: 'Cascata', group: 'Arte',
-    defaults: defs({ glow: 4, colunas: 40, trail: 0.7 }),
-    schema: COMMON.concat([
-      { k: 'colunas', label: 'Colunas', min: 16, max: 80, step: 1, def: 40 },
-      { k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.7 }
-    ]),
-    init: function (m) { m.st.drops = []; m.st.emit = null; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt), N = Math.round(s.colunas);
-      if (!m.st.emit || m.st.emit.length !== N) m.st.emit = new Float32Array(N);
-      var emit = m.st.emit, drops = m.st.drops, f = d.freq, n = f.length, binHz = 22050 / n, mono = CV.isMono(m), colW = w / N, i;
-      for (i = 0; i < N; i++) {
-        var fr = 40 * Math.pow(14000 / 40, i / Math.max(1, N - 1));
-        var bin = Math.min(n - 1, Math.round(fr / binHz));
-        var e = Math.min(1, Math.pow(f[bin] / 255, 1.3) * s.sens);
-        emit[i] += (e - emit[i]) * (e > emit[i] ? 0.6 : 0.2);
-        if (emit[i] > 0.25 && Math.random() < emit[i] * 0.8 * (0.2 + 0.8 * gate) && drops.length < 700) {
-          drops.push({ col: i, y: 0, v: 80 + emit[i] * 260, b: emit[i], ci: i % 4, life: 1 });
-        }
-      }
-      CV.blend(m, c);
-      for (var j = drops.length - 1; j >= 0; j--) {
-        var p = drops[j];
-        p.y += p.v * dt; p.life -= dt * 0.4;
-        if (p.y > h + 20 || p.life <= 0) { drops.splice(j, 1); continue; }
-        var x = p.col * colW + colW * 0.5, col = mono ? [0, 0, 100] : CV.pal(m, p.ci, t), len = 8 + p.b * 26;
-        var g = c.createLinearGradient(x, p.y - len, x, p.y);
-        g.addColorStop(0, CV.hsla(col, 0));
-        g.addColorStop(1, CV.hsla([col[0], col[1], Math.min(92, 55 + p.b * 35)], (0.4 + p.b * 0.5) * p.life));
-        c.strokeStyle = g; c.lineWidth = Math.max(1, colW * 0.3);
-        if (s.glow > 0 && p.b > 0.6) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1); }
-        c.beginPath(); c.moveTo(x, p.y - len); c.lineTo(x, p.y); c.stroke(); c.shadowBlur = 0;
-      }
-      CV.blend(m, c, false);
-    }
-  });
 
   /* ================= MALHA (tecido 3D que ondula com o som) ================= */
   CV.register('malha', {
-    name: 'Malha', group: 'Arte',
-    defaults: defs({ glow: 3, grade: 16 }),
+    name: 'Malha', group: 'Arte', desc: 'Tecido 3D ondulando com o som',
+    defaults: defs({ grade: 16 }),
     schema: COMMON.concat([{ k: 'grade', label: 'Densidade', min: 8, max: 28, step: 1, def: 16 }]),
     init: function (m) { m.st.pt = 0; },
     draw: function (m, d, dt, t) {
@@ -1797,7 +2080,7 @@
       for (yi = 0; yi <= G; yi++) { var row = []; for (xi = 0; xi <= G; xi++) row.push(proj(xi / G, yi / G)); pts.push(row); }
       // PERFORMANCE: uma linha inteira por traço (2×G traços), em vez de um traço por segmento
       // (eram ~600 chamadas por quadro). O brilho vira 3 faixas de profundidade.
-      c.lineWidth = 1;
+      c.lineWidth = CV.lw(m, 1);
       var BANDS = 3, bi2, row2, p2;
       for (bi2 = 0; bi2 < BANDS; bi2++) {
         var lo = bi2 / BANDS, hi = (bi2 + 1) / BANDS, mid2 = (lo + hi) / 2;
@@ -1827,93 +2110,7 @@
     }
   });
 
-  /* ================= TÚNEL DE FIOS (corredor wireframe que gira e pulsa) ================= */
-  CV.register('tunelfio', {
-    name: 'Túnel de fios', group: 'Arte',
-    defaults: defs({ glow: 3, lados: 8, aneis: 16 }),
-    schema: COMMON.concat([
-      { k: 'lados', label: 'Lados', min: 3, max: 12, step: 1, def: 8 },
-      { k: 'aneis', label: 'Anéis', min: 6, max: 26, step: 1, def: 16 }
-    ]),
-    init: function (m) { m.st.pt = 0; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.clearRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * s.speed * (0.1 + gate * 0.8 + d.beatPulse * 0.5);
-      var pt = m.st.pt, cx = w * 0.5, cy = h * 0.5;
-      if (m.mouse && m.mouse.over) { cx += (m.mouse.x / w - 0.5) * w * 0.3; cy += (m.mouse.y / h - 0.5) * h * 0.3; }
-      var sides = Math.round(s.lados), rings = Math.round(s.aneis);
-      var mono = CV.isMono(m), col = mono ? [0, 0, 92] : CV.pal(m, 0, t);
-      var maxR = Math.sqrt(w * w + h * h) * 0.55, twist = pt * 0.25 + d.mid * 1.0, frac = (pt * 0.12) % 1;
-      c.lineJoin = 'round';
-      var prev = null, prevDD = 0, i, k;
-      for (i = 0; i <= rings; i++) {
-        var dd = ((i / rings) + frac) % 1;
-        var R = maxR * (0.03 + dd * dd * 0.97) * (1 + d.bass * 0.25), rot = twist + dd * 1.4, pts = [];
-        for (k = 0; k < sides; k++) { var a = rot + k / sides * 6.2831; pts.push([cx + Math.cos(a) * R, cy + Math.sin(a) * R]); }
-        var alpha = Math.sin(dd * Math.PI) * (0.15 + 0.85 * gate);
-        if (s.glow > 0 && dd > 0.6) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow * alpha; c.shadowColor = CV.hsla(col, 1); }
-        c.strokeStyle = CV.hsla([col[0], col[1], (mono ? 48 : 44) + dd * 38], alpha * 0.9);
-        c.lineWidth = 0.8 + dd * 1.3;
-        c.beginPath();
-        for (k = 0; k < sides; k++) { k === 0 ? c.moveTo(pts[0][0], pts[0][1]) : c.lineTo(pts[k][0], pts[k][1]); }
-        c.closePath(); c.stroke();
-        if (prev && Math.abs(dd - prevDD) < 0.5) {
-          c.beginPath();
-          for (k = 0; k < sides; k++) { c.moveTo(prev[k][0], prev[k][1]); c.lineTo(pts[k][0], pts[k][1]); }
-          c.stroke();
-        }
-        prev = pts; prevDD = dd; c.shadowBlur = 0;
-      }
-    }
-  });
 
-  /* ================= NÓ (curva de Lissajous 3D girando no espaço) ================= */
-  CV.register('no', {
-    name: 'Nó', group: 'Arte',
-    defaults: defs({ glow: 4, trail: 0.5 }),
-    schema: COMMON.concat([{ k: 'trail', label: 'Rastro', min: 0, max: 1, step: 0.02, def: 0.5 }]),
-    init: function (m) { m.st.pt = 0; },
-    draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      c.fillStyle = CV.trailFill(m, s.trail);
-      c.fillRect(0, 0, w, h);
-      if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * s.speed * (0.1 + gate * 0.7);
-      var pt = m.st.pt, cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.4;
-      var rotY = pt * 0.5 + (m.mouse && m.mouse.over ? (m.mouse.x / w - 0.5) * 3 : 0);
-      var rotX = pt * 0.33 + (m.mouse && m.mouse.over ? (m.mouse.y / h - 0.5) * 2 : 0);
-      var mono = CV.isMono(m), col = mono ? [0, 0, 95] : CV.pal(m, 0, t);
-      var amp = 0.5 + d.level * 3 * s.sens * (0.3 + 0.7 * gate);
-      var cyR = Math.cos(rotY), syR = Math.sin(rotY), cxR = Math.cos(rotX), sxR = Math.sin(rotX);
-      CV.blend(m, c);
-      if (s.glow > 0) { c.shadowBlur = CV.isLight(m) ? 0 : s.glow; c.shadowColor = CV.hsla(col, 1); }
-      c.strokeStyle = CV.hsla(col, 0.35 + gate * 0.5); c.lineWidth = 1.1;
-      c.beginPath();
-      var STEPS = 280;
-      for (var i = 0; i <= STEPS; i++) {
-        var u = i / STEPS * 6.2831;
-        var x = Math.sin(3 * u + pt * 0.6) * amp * 0.6, y = Math.sin(2 * u) * amp * 0.6, z = Math.cos(5 * u + pt * 0.4) * amp * 0.6;
-        var x1 = x * cyR - z * syR, z1 = x * syR + z * cyR;
-        var y1 = y * cxR - z1 * sxR, z2 = y * sxR + z1 * cxR;
-        var persp = 1.7 / (1.7 + z2), px = cx + x1 * R * persp, py = cy + y1 * R * persp;
-        i === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
-      }
-      c.stroke(); c.shadowBlur = 0;
-      CV.blend(m, c, false);
-    }
-  });
 
-  // módulos removidos do app (Bruno cortou): saem da lista; o código fica inerte
-  ['terreno', 'tunnel', 'mare', 'ascii', 'harmonografo', 'tinta', 'barras', 'colmeia', 'vitral', 'cascata', 'tunelfio', 'no', 'orbita', 'contorno'].forEach(function (id) {
-    delete CV.registry[id];
-    var ix = CV.order.indexOf(id);
-    if (ix >= 0) CV.order.splice(ix, 1);
-  });
 
 })();

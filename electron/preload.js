@@ -11,7 +11,8 @@ contextBridge.exposeInMainWorld('caramujo', {
   winFullscreen: () => ipcRenderer.invoke('cv-win-fullscreen'),
   winGetBounds: () => ipcRenderer.invoke('cv-win-get-bounds'),
   winSetBounds: (b) => ipcRenderer.invoke('cv-win-set-bounds', b),
-  winStick: (pos) => ipcRenderer.invoke('cv-win-stick', pos),
+  winStick: (pos, size) => ipcRenderer.invoke('cv-win-stick', pos, size),
+  winSettings: (open, px, side) => ipcRenderer.invoke('cv-win-settings', open, px, side),
   winPin: (on) => ipcRenderer.invoke('cv-win-pin', on),
   // captura nativa (estéreo de verdade)
   nativeAvailable: () => ipcRenderer.invoke('cv-native-available'),
@@ -19,5 +20,9 @@ contextBridge.exposeInMainWorld('caramujo', {
   nativeStart: () => ipcRenderer.invoke('cv-native-start'),
   nativeStop: () => ipcRenderer.invoke('cv-native-stop'),
   onNativeAudio: (cb) => ipcRenderer.on('cv-native-audio', (e, buf) => cb(buf)),
-  onNativeError: (cb) => ipcRenderer.on('cv-native-error', (e, msg) => cb(msg))
+  onNativeError: (cb) => ipcRenderer.on('cv-native-error', (e, msg) => cb(msg)),
+  onBounds: (cb) => ipcRenderer.on('cv-bounds', (e, b) => cb(b)),
+  // gravação salva direto em Downloads
+  onDownload: (cb) => ipcRenderer.on('cv-download', (e, d) => cb(d)),
+  showFile: (p) => ipcRenderer.invoke('cv-show-file', p)
 });

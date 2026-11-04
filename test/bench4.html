@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Caramujo Vision — bancada 4: o custo do pós</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #050506; color: #d8d8de;
+    font: 12px/1.55 "SF Mono", ui-monospace, monospace; }
+  #stage { position: fixed; inset: 0; display: grid;
+    grid-template-columns: repeat(240, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 0; }
+  #stage > div { position: relative; overflow: hidden; background: #070709; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #fx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+  #out { position: fixed; left: 0; top: 0; z-index: 9; padding: 18px 22px;
+    background: rgba(4,4,6,0.93); white-space: pre; letter-spacing: 0.3px;
+    border-right: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08);
+    max-height: 100%; overflow: auto; }
+  b { color: #f0efe9; font-weight: 600; }
+  .k { color: #7f8; }
+  .w { color: #fd6; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<canvas id="fx"></canvas>
+<pre id="out">medindo…</pre>
+
+<script src="../js/fx.js"></script>
+<script>
+/* BANCADA 4 — o único número que o diagnóstico NÃO tinha: quanto custa SUBIR os
+   16 painéis pra placa de vídeo, por quadro, no macOS.
+
+   Roda com:  npm run bench4
+
+   O que ela faz: monta 16 painéis do tamanho do layout padrão, desenha em todos
+   eles todo quadro (linha fina, preenchimento e texto, como os visuais de
+   verdade), e mede o relógio de quadro em quatro situações. A diferença entre
+   elas é a resposta. */
+(function () {
+  'use strict';
+  var LAYOUT = [
+    ['spectrum', 80, 40], ['wavescroll', 80, 40], ['loudness', 20, 40], ['gonio', 60, 40],
+    ['scope', 80, 40], ['spectrogram', 80, 40], ['psy', 80, 80], ['flow', 80, 80],
+    ['aurora', 80, 80], ['enxame', 80, 80], ['malha', 80, 80], ['lissa', 80, 80],
+    ['trace', 160, 40], ['cordas', 80, 40], ['wavelayers', 160, 60], ['silk', 80, 60]
+  ];
+  var METER = { spectrum: 1, wavescroll: 1, loudness: 1, gonio: 1, scope: 1, spectrogram: 1 };
+  var GL_MOD = { psy: 1, aurora: 1 };
+  var out = document.getElementById('out');
+  var stage = document.getElementById('stage');
+  var dpr = window.devicePixelRatio || 1;
+
+  // grade igual à do app (240 colunas), skyline best-fit
+  var sky = new Array(240); for (var i = 0; i < 240; i++) sky[i] = 0;
+  var panels = [];
+  LAYOUT.forEach(function (L) {
+    var id = L[0], gw = L[1], gh = L[2], bx = 0, by = Infinity, x, k;
+    for (x = 0; x + gw <= 240; x++) {
+      var y = 0;
+      for (k = x; k < x + gw; k++) if (sky[k] > y) y = sky[k];
+      if (y < by) { by = y; bx = x; }
+    }
+    for (k = bx; k < bx + gw; k++) sky[k] = by + gh;
+    var box = document.createElement('div');
+    box.style.gridColumn = (bx + 1) + ' / span ' + gw;
+    box.style.gridRow = (by + 1) + ' / span ' + gh;
+    var cv = document.createElement('canvas');
+    box.appendChild(cv); stage.appendChild(box);
+    panels.push({ id: id, el: box, canvas: cv, meter: !!METER[id], gl: !!GL_MOD[id] });
+  });
+
+  /* resolução por tipo, igual ao app depois da ETAPA 2:
+     medidor 2x (1,5x se usa buffer), arte 2x, shader 1,5x */
+  function cap(p) { return p.gl ? 1.5 : (p.id === 'wavescroll' || p.id === 'spectrogram' ? 1.5 : 2); }
+  function sizeAll() {
+    panels.forEach(function (p) {
+      var r = p.el.getBoundingClientRect();
+      var q = Math.min(cap(p), dpr);
+      p.w = r.width; p.h = r.height;
+      p.canvas.width = Math.max(2, Math.round(r.width * q));
+      p.canvas.height = Math.max(2, Math.round(r.height * q));
+      p.ctx = p.canvas.getContext('2d');
+      p.ctx.setTransform(q, 0, 0, q, 0, 0);
+    });
+  }
+  sizeAll();
+
+  /* desenho representativo: fundo, uma curva de 1px por pixel de largura, um
+     preenchimento e um texto. É o perfil dos visuais de verdade, e o que
+     importa aqui é que o bitmap MUDE todo quadro (senão o upload some). */
+  function drawPanel(p, t) {
+    var c = p.ctx, w = p.w, h = p.h, i;
+    c.fillStyle = '#050506'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = 'rgba(240,239,233,0.9)'; c.lineWidth = 1;
+    c.beginPath();
+    for (i = 0; i < w; i++) {
+      var v = Math.sin(i * 0.06 + t * 3) * 0.5 + Math.sin(i * 0.17 - t * 2) * 0.28;
+      c.lineTo(i, h * 0.5 + v * h * 0.42);
+    }
+    c.stroke();
+    c.fillStyle = 'rgba(240,239,233,0.12)';
+    c.fillRect(0, h * 0.72, w * (0.5 + 0.5 * Math.sin(t * 2)), h * 0.28);
+    c.fillStyle = 'rgba(255,255,255,0.45)';
+    c.font = '9px "SF Mono", ui-monospace, monospace';
+    c.fillText(p.id.toUpperCase() + ' ' + p.canvas.width + 'x' + p.canvas.height, 8, 16);
+  }
+
+  var fxCanvas = document.getElementById('fx');
+  var fxi = window.FX ? FX.create(fxCanvas) : null;
+  var rects = [];
+  function fxLayout() {
+    rects = panels.map(function (p) {
+      var r = p.el.getBoundingClientRect();
+      return { key: p.id, x: r.left, y: r.top, w: r.width, h: r.height,
+        dose: 1, bg: [0.02, 0.02, 0.024], meter: p.meter ? 1 : 0, light: 0 };
+    });
+    if (fxi) fxi.setLayout(rects, window.innerWidth, window.innerHeight);
+  }
+  function fxSize() {
+    fxCanvas.width = Math.round(window.innerWidth * dpr);
+    fxCanvas.height = Math.round(window.innerHeight * dpr);
+  }
+  fxSize(); fxLayout();
+
+  /* ---------- medição ----------
+     4 situações, 150 quadros cada, mediana do relógio de quadro. A mediana
+     ignora o engasgo isolado do sistema, que a média não ignora. */
+  var CASOS = [
+    { nome: 'só os 16 painéis (sem pós)', up: 0, pos: null },
+    { nome: 'painéis + subir pra placa', up: 1, pos: null },
+    { nome: 'painéis + subir + passada RÉGUA', up: 1, pos: 'regua' },
+    { nome: 'painéis + subir + passada PRATA', up: 1, pos: 'prata' },
+    { nome: 'painéis + subir + passada VIDRO', up: 1, pos: 'vidro' }
+  ];
+  var QUADROS = 150, AQUECE = 45;
+  var caso = 0, n = 0, t0 = 0, tempos = [], cpuUp = [], cpuPos = [], res = [];
+
+  function mediana(a) {
+    if (!a.length) return 0;
+    var b = a.slice().sort(function (x, y) { return x - y; });
+    return b[b.length >> 1];
+  }
+  function linha(nome, ms, extra) {
+    var fps = ms > 0 ? (1000 / ms) : 0;
+    return '  ' + (nome + '                                     ').slice(0, 36) +
+      ('       ' + ms.toFixed(2)).slice(-7) + ' ms/quadro   ' +
+      ('   ' + fps.toFixed(0)).slice(-4) + ' fps' + (extra || '');
+  }
+  function relatorio() {
+    var base = res[0].ms;
+    var txt = [];
+    txt.push('<b>BANCADA 4 — o custo da passada de pós</b>');
+    txt.push('janela ' + window.innerWidth + 'x' + window.innerHeight + ' · tela ' + dpr + 'x · ' +
+      panels.length + ' painéis · ' + QUADROS + ' quadros por caso');
+    txt.push('imagem montada: ' + fxCanvas.width + 'x' + fxCanvas.height + ' = ' +
+      (fxCanvas.width * fxCanvas.height / 1e6).toFixed(1) + ' Mpx por quadro');
+    txt.push('');
+    res.forEach(function (r) {
+      txt.push(linha(r.nome, r.ms) + (r.up ? '   [subir ' + r.up.toFixed(2) + ' · passada ' + r.pos.toFixed(2) + ']' : ''));
+    });
+    txt.push('');
+    txt.push('<b>a conta que interessa</b>');
+    var up = res[1].ms - base, pr = res[3].ms - res[1].ms;
+    txt.push('  subir os 16 painéis pra placa   : ' + up.toFixed(2) + ' ms por quadro  ' +
+      (up > 1.5 ? '<span class="w">← caro, me avise</span>' : '<span class="k">← cabe</span>'));
+    txt.push('  a passada PRATA em cima disso   : ' + pr.toFixed(2) + ' ms por quadro  ' +
+      (pr > 1.5 ? '<span class="w">← acima do orçamento de 1,5</span>' : '<span class="k">← dentro do orçamento</span>'));
+    txt.push('  pós inteiro (subir + passada)   : ' + (up + pr).toFixed(2) + ' ms por quadro');
+    txt.push('');
+    txt.push('  <b>o processador esperou a placa?</b>');
+    txt.push('    tempo parado subindo, sem passada : ' + res[1].up.toFixed(2) + ' ms');
+    txt.push('    tempo parado subindo, com PRATA   : ' + res[3].up.toFixed(2) + ' ms  ' +
+      (res[3].up > res[1].up * 3 ? '<span class="w">← esperou</span>' : '<span class="k">← não esperou</span>'));
+    txt.push('');
+    txt.push('  orçamento a 60 quadros por segundo: 16,67 ms · a 120: 8,33 ms');
+    out.innerHTML = txt.join('\n');
+    console.log(out.textContent);
+  }
+
+  function frame(now) {
+    var c = CASOS[caso];
+    var t = now / 1000, i;
+    /* SOBE NO COMEÇO DO QUADRO, como o app faz: o desenho que sobe é o do quadro
+       anterior, que a placa já terminou faz tempo. Subir logo depois de desenhar
+       obriga o processador a parar e esperar. */
+    if (c.up && fxi) {
+      var a = performance.now();
+      for (i = 0; i < panels.length; i++) fxi.upload(panels[i].id, panels[i].canvas);
+      if (n >= AQUECE) cpuUp.push(performance.now() - a);
+    }
+    for (i = 0; i < panels.length; i++) drawPanel(panels[i], t);
+    if (c.pos && fxi) {
+      var b = performance.now();
+      fxi.render({
+        w: fxCanvas.width, h: fxCanvas.height, cssW: window.innerWidth, cssH: window.innerHeight,
+        dpr: dpr, preset: c.pos, amount: 1, energy: 1, time: t, rects: rects, center: [0.5, 0.5]
+      });
+      if (n >= AQUECE) cpuPos.push(performance.now() - b);
+    }
+    if (n >= AQUECE && t0) tempos.push(now - t0);
+    t0 = now;
+    n++;
+    if (n >= QUADROS + AQUECE) {
+      res.push({ nome: c.nome, ms: mediana(tempos), up: mediana(cpuUp), pos: mediana(cpuPos) });
+      out.textContent = 'medindo… ' + (caso + 1) + '/' + CASOS.length + '  (' + c.nome + ')';
+      caso++; n = 0; t0 = 0; tempos = []; cpuUp = []; cpuPos = [];
+      if (caso >= CASOS.length) { relatorio(); return; }
+    }
+    requestAnimationFrame(frame);
+  }
+  if (!fxi) out.textContent = 'FALHOU: esta máquina não deu contexto WebGL2. O pós não roda aqui.';
+  else requestAnimationFrame(frame);
+
+  window.addEventListener('resize', function () { sizeAll(); fxSize(); fxLayout(); });
+})();
+</script>
+</body>
+</html>

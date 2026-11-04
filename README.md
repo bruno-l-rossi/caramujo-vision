@@ -1,8 +1,8 @@
 # Caramujo Vision
 
-Visualizador de áudio em tempo real pra macOS. Ele escuta o som que sai do seu computador (FL Studio, YouTube, Spotify, qualquer coisa) e desenha na tela: medidores de estúdio de um lado, arte que reage à música do outro.
+Medidor de áudio em tempo real pra macOS, no molde do MiniMeters. Abre como uma barra de medidores colada no rodapé da tela e já mede o que sai do computador: FL Studio, YouTube, Spotify, qualquer coisa.
 
-Serve pra duas coisas ao mesmo tempo. Mixar e masterizar olhando espectro, LUFS e imagem estéreo. E gerar visual pra clipe, Reels e story, gravando qualquer painel em vídeo com o áudio junto.
+E faz o que o MiniMeters não faz: arte que reage à música e gravação de qualquer visual em MP4 com o áudio junto, pronto pra Reels e YouTube.
 
 Feito pelo rideblan / Caramujo Records.
 
@@ -14,70 +14,157 @@ Abra o `Caramujo Vision.dmg`, arraste o app pra pasta **Aplicativos** e abra pel
 
 Na primeira vez o macOS pede duas coisas:
 
-1. **Permitir abrir o app.** Clique com o botão direito no ícone → **Abrir** → **Abrir**. Só na primeira vez.
+1. **Permitir abrir o app.** Botão direito no ícone, **Abrir**, **Abrir**. Só na primeira vez.
 2. **Permissão de gravação de tela.** É o que libera a captura do som do sistema. Autorize e abra o app de novo.
 
-Pronto. Não precisa de driver, nem de configuração de áudio, nem de terminal.
+Não precisa de driver nem de terminal.
 
----
+## Primeiro uso
 
-## Como usar
+Toque um som. A barra reage na hora.
 
-Toque um som qualquer no computador. Os visuais reagem na hora.
+Passe o mouse pela janela e a barra de ferramentas aparece no canto de cima, à esquerda. Tire o mouse e ela some. Quando você está no FL Studio, ela não existe.
 
-- **Menu**: leve o mouse ao topo da tela. Aparece a aba **☰ MENU**; clique nela pra abrir a barra, clique fora pra fechar (a tecla `H` também abre).
-- **Ajuda**: o **?** no canto superior direito tem o resumo de uso, o estado do áudio, a troca de entrada e o contato.
-- **Começar rápido**: no menu, abra **TEMPLATES** e escolha um pronto. É o caminho mais fácil.
-- **Ajustar um visual**: passe o mouse no painel e clique no **⚙**. Os controles abrem numa faixa embaixo, sem cobrir nada.
-- **Mudar o tamanho**: arraste as bordas do painel. Só a borda que você puxa se move; o vizinho cede o espaço.
-- **Trocar de lugar**: arraste o painel pela alça **⠿**.
-- **Mover a janela**: arraste pela alça **✥**.
+Tudo que dá pra mudar mora em dois lugares:
 
-## O menu
+- **Barra de ferramentas**: o que se troca toda hora (preset, tema, posição, pausa).
+- **Ajustes** (tecla `S`): o resto, em seis abas.
 
-| Comando | O que faz |
+O app reabre exatamente como você fechou.
+
+## A barra de ferramentas
+
+| Botão | O que faz |
 | --- | --- |
-| **TEMPLATES** | Combinações prontas de visuais, cores e formato. `⭑` salva a sua, `🗑` apaga. |
-| **POSIÇÃO** | Onde a janela fica e como os visuais se arrumam: tela normal, ou grudada no topo, rodapé, esquerda ou direita da tela. |
-| **TEMA** | 14 temas. Cada um muda fundo, texto, grade e cor dos traços: PRETO, PAPEL e GELO (claros), ARDÓSIA, NEON, VHS, OCEANO e mais. |
-| **+ VISUAL** | Adiciona mais um módulo à tela. |
-| **📌** | Mantém o app na frente das outras janelas. |
-| **⛶** | Tela cheia. |
+| Caramujo | Arraste pra mover a janela |
+| **Barra** ▾ | O preset: troca os visuais de uma vez. Salva os seus, desfaz alteração |
+| ◐ | Tema (a tecla `T` passa pro próximo) |
+| ▭ | Posição: janela livre, barra no topo, barra no rodapé, coluna à esquerda ou à direita |
+| Alfinete | Sempre na frente das outras janelas |
+| ‖ | Pausa e congela a tela (`P`) |
+| Ajustes | Abre a folha de ajustes (`S`) |
+| ⋯ | Adicionar visual, tela cheia, desempenho, último vídeo no Finder, atalhos |
+| – × | Minimizar e fechar |
 
-## Templates prontos
+Um pontinho do lado do nome do preset quer dizer que você mexeu nele. O menu do preset oferece salvar as alterações ou desfazer.
 
-Escolher um template ajusta tudo junto: visuais, tema e até onde a janela fica.
+## Mexendo nos visuais
 
-**Estúdio** — `01 mixagem` (preto, leitura seca), `02 master` (papel, LUFS grande), `03 grave` (ardósia, foco no sub), `11 válvula` (âmbar).
+Passe o mouse num visual: aparece o nome dele e quatro botões no canto de baixo, à direita.
 
-**Visual e clipe** — `04 clipe vertical` (proporção de Reels), `05 show` (neon), `06 ambiente` (floresta), `08 rua` (VHS), `09 submerso` (oceano), `10 brasa` (rubi), `12 neve` (gelo), `13 deserto` (areia), `14 sonho` (lavanda).
+- **⋮⋮** arraste pra trocar de lugar. Soltou do lado de outro visual, encaixa na mesma linha. Soltou na faixa de cima ou de baixo, abre uma linha nova.
+- **Ajustes** abre a folha direto nos controles daquele visual.
+- **●** grava vídeo daquele visual.
+- **×** tira da tela.
 
-**Misto** — `07 produção` (poente, metade e metade).
+O **botão direito** em qualquer visual abre o mesmo menu, com mais duas opções: trocar por outro visual no mesmo lugar e adicionar um ao lado.
 
-**Encaixados na tela** — `15 régua no rodapé`, `16 faixa no topo`, `17 coluna à direita`, `18 torre à esquerda`.
+**Tamanho:** a divisória entre dois visuais acende quando o mouse chega perto. Arraste e só os dois vizinhos mudam; o resto da tela fica parado. Duplo clique na divisória iguala os tamanhos.
 
-**Do zero** — `19 tela limpa`.
+## Presets
 
-O `⭑` salva a sua montagem com um nome e ela entra na lista.
+O preset guarda quais visuais estão na tela e o tamanho de cada um. Tema e posição ficam de fora, então trocar de preset não desmancha a cara que você escolheu.
+
+| Grupo | Presets |
+| --- | --- |
+| Medição | **Barra** (o padrão: Onda, Espectro, Loudness, Estéreo e Osciloscópio), Quad, Mixagem, Master, Analógico |
+| Arte | Clipe, Show, Ambiente |
+| Misto | Produção |
+
+Na barra encaixada as linhas do preset viram uma fileira só; na coluna lateral, uma pilha só. Cada forma guarda o próprio tamanho: arrumar a barra não bagunça a janela livre.
+
+**Salvar como novo preset** no menu guarda a sua montagem com um nome. Ela aparece em **Meus presets**.
 
 ## Os visuais
 
-**Estúdio (6).** Espectro (grade de Hz, leitura de dB/nota no hover), Onda rolante, Loudness (LUFS), Espaço estéreo, Osciloscópio, Espectrograma.
+**Medidores (7).** Os mesmos sete do MiniMeters.
 
-**Arte (10).** PSY (líquido psicodélico), Aurora, Campo de fluxo, Enxame, Fita, Traço, Ondas em camadas, Lissajous, Cordas, Malha.
+| Visual | O que mostra |
+| --- | --- |
+| Onda | A forma de onda passando em três bandas (grave, médio e agudo), um canal em cada faixa |
+| Espectro | Frequências em tempo real, duas curvas (esquerda e direita). O preenchimento acende onde toca forte. Com o mouse em cima, lê dB, Hz e nota |
+| Loudness | LUFS pela ITU-R BS.1770: CURTO (3 segundos) e MÉDIO (desde que o som começou). O número grande é o médio |
+| Estéreo | A nuvem de largura e balanço da mixagem, em ponto redondo |
+| Osciloscópio | A onda parada no tom, em curva lisa, com a nota |
+| Espectrograma | O histórico das frequências |
+| VU | Ponteiro analógico com balística de 300 ms. **Novo na v2** |
 
-Todos seguem a mesma regra: o áudio é quem manda. No silêncio a tela para e apaga.
+O VU nasce calibrado com 0 VU em -8 dBFS, que é onde um beat masterizado dança em volta do 0. Pra mixar, troque pra -18 nos ajustes dele.
+
+**Arte (10).** PSY, Lissajous, Traço, Fluxo, Camadas, Fita, Enxame, Aurora, Cordas, Malha. Todos seguem a mesma regra: o áudio é quem manda, e no silêncio a tela para e apaga.
+
+## Temas
+
+Dez temas, do mais escuro pro mais claro: **MiniMeters**, Preto, Fósforo, Planta, Ardósia, Chumbo, Tijolo, Areia, Gelo, Papel.
+
+Cada tema traz uma cor desenhada pra cada medidor, além do fundo, do texto e da grade. Barra de ferramentas, menus e ajustes saem das mesmas cores: trocar de tema é trocar de aparelho.
+
+No tema MiniMeters a onda e o estéreo saem por banda (grave vermelho, médio verde, agudo azul), como no app dele. Nos outros, saem na cor do tema: a onda vira três tons da mesma cor. Dá pra trocar em cada visual.
 
 ## Gravar vídeo
 
-O botão **●** na barra do painel grava aquele visual em `.webm`, com o áudio junto. Ajuste o painel na proporção que você quer (vertical pra Reels, quadrado pra feed) antes de gravar.
+Passe o mouse num visual e clique no **●**. Clique de novo pra parar. O vídeo sai em MP4 com o áudio junto, já sincronizado, e vai direto pra pasta **Downloads**.
+
+Em **Ajustes › Gravação** você escolhe a medida antes de gravar:
+
+| Escolha | Sai em | Pra que |
+| --- | --- | --- |
+| Tamanho do painel | o tamanho que o visual tem na tela | rascunho |
+| 9:16 Reels | 1080x1920 | Reels, Stories, Shorts |
+| 1:1 Feed | 1080x1080 | feed |
+| 16:9 YouTube | 1920x1080 | YouTube |
+
+Com medida fixa o visual é redesenhado fora da tela no tamanho exato. Sai pronto, sem reenquadrar no Final Cut.
+
+**Dica de clipe:** solte um arquivo de áudio na janela. Ele toca, os visuais reagem, e você grava o clipe da faixa pronta.
+
+## Acabamento de filme
+
+Em **Ajustes › Aparência** tem a passada de luz de cinema por cima de tudo: halação, grão e vinheta. **Régua** é o acabamento discreto pros medidores; **Prata** e **Vidro** são pra clipe e show.
+
+Nasce desligado. Ele custa placa de vídeo o tempo todo, e medidor não precisa de luz de cinema. Os medidores nunca recebem borrão nem aberração cromática, em nenhuma das três direções.
 
 ## Atalhos
 
 | Tecla | Ação |
 | --- | --- |
-| `H` | Abre e fecha o menu |
+| `S` | Abre e fecha os ajustes |
+| `P` | Pausa e continua |
+| `T` | Passa pro próximo tema |
+| `H` | Barra de ferramentas sempre visível |
+| `F` | Mostra fps e o atraso do som até a tela |
+| `Esc` | Fecha o que estiver aberto |
 | `⌘Q` | Fecha o programa |
+
+## Desempenho
+
+O app abre com 5 medidores (a v1 abria com 16 visuais) e com o acabamento de filme desligado. Isso sozinho tira a maior parte do trabalho da placa de vídeo.
+
+Quando o som para, os medidores apagam em 2 segundos e o app **para de desenhar** até o som voltar. É o caso mais comum: o FL Studio parado com o Caramujo aberto do lado. O motor de áudio continua ouvindo pra acordar no primeiro kick.
+
+Em **Ajustes › Janela** dá pra limitar os quadros por segundo: **Da tela** acompanha o monitor (120 numa tela ProMotion, 60 numa comum); **30** economiza bateria e deixa a máquina livre pro FL Studio.
+
+Aperte `F` pra ver os quadros por segundo e quanto tempo o som leva pra chegar na tela.
+
+## v2.1: medidores lisos
+
+- Espectro e osciloscópio desenhados em curva. Os sete medidores juntos fazem um quarto das chamadas de desenho da v2.0 (3.162 contra 12.934 por quadro), e a barra roda a 60 quadros por segundo no teste, contra 55 a 58 da v2.0.
+- O preenchimento do espectro ficou leve: acende onde a frequência toca forte e some em direção ao rodapé. O brilho na batida continua e pode ser desligado nos ajustes do Espectro.
+- A onda virou três bandas em camadas, como a onda multibanda do MiniMeters, e rola lisa, sem tranco.
+- O número do loudness perdeu a caixa de cor.
+- O estéreo ganhou ponto redondo e mais pontos em painel grande.
+- O osciloscópio para de pular pra nota aguda quando entra chimbal.
+
+## Da v1 pra v2
+
+- A interface foi refeita no molde do MiniMeters: uma barra de ferramentas pequena que some sozinha e os ajustes num lugar só, em abas.
+- O layout virou linhas de visuais. Nenhuma tela fica com buraco ou com um visual por cima do outro.
+- **A sua tela da v1 virou o preset "Minha tela antiga"**, a um clique no menu de presets. Templates que você salvou com nome próprio também viraram presets.
+- Os 13 temas viraram 10, cada um com cor desenhada por medidor. Quem estava em Carvão, Musgo ou Jornal cai no vizinho mais próximo.
+- Templates, Color Map global e o ajuste de fundo (◐) saíram da interface. A cor por visual continua nos ajustes de cada um.
+- Entrou o VU, o sétimo medidor do MiniMeters.
+- Gravação salva direto em Downloads, sem janela de "Salvar como".
+- Consertado: no caminho de áudio sem o módulo nativo, a tela podia ficar preta mesmo com som chegando.
 
 ---
 
@@ -96,11 +183,11 @@ Empacotar o instalador:
 npm run dist
 ```
 
-Sai um `.dmg` na pasta `dist/`, pronto pra distribuir.
+Sai um `.dmg` na pasta `dist/`.
 
 ### Captura em estéreo
 
-O app capta em estéreo por um módulo nativo. Se ele não estiver disponível, cai sozinho num modo mono e continua funcionando. Pra instalar o módulo a partir do código:
+O app capta em estéreo por um módulo nativo. Sem ele, cai sozinho num modo mono e continua funcionando. Pra instalar o módulo a partir do código:
 
 ```
 xcode-select --install
@@ -110,7 +197,7 @@ npm run audio-nativo
 npm run audio-nativo-check
 ```
 
-O status no canto inferior esquerdo mostra **ESTÉREO NATIVO** quando está ativo.
+Em **Ajustes › Áudio** o estado mostra **Estéreo nativo** quando ele está ativo.
 
 ### Testes
 
@@ -118,14 +205,18 @@ O status no canto inferior esquerdo mostra **ESTÉREO NATIVO** quando está ativ
 npm test
 ```
 
+Roda 131 checagens em 1 ou 2 segundos: motor de áudio, os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
+
 ## Estrutura
 
 ```
 index.html            página única
 css/style.css         interface
 js/audio.js           captura e análise de áudio
-js/modules.js         os 16 visuais
-js/app.js             grade, ajustes, temas, templates, gravação
-electron/main.js      janela e captura nativa
+js/modules.js         os 17 visuais e os temas
+js/fx.js              acabamento de filme (uma passada na placa de vídeo)
+js/app.js             layout, barra de ferramentas, ajustes, presets, gravação
+electron/main.js      janela, encaixe na borda e captura nativa
+test/smoke.js         o npm test
 DESIGN.md             identidade visual
 ```

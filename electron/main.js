@@ -1,4 +1,4 @@
-/* Caramujo Vision — janela do programa de computador (sem moldura, minimalista) */
+/* Caramujo Vision · janela do programa de computador (sem moldura, minimalista) */
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, systemPreferences, nativeImage } = require('electron');
 const path = require('path');
 
@@ -14,10 +14,33 @@ try { process.title = 'Caramujo Vision'; } catch (e) {}
    do SCK: se os taps não existirem na versão do macOS, o SCK continua valendo. */
 app.commandLine.appendSwitch(
   'enable-features',
-  'MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture,MacSckSystemAudioLoopbackOverride,PulseaudioLoopbackForScreenShare'
+  'MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture,MacSckSystemAudioLoopbackOverride,PulseaudioLoopbackForScreenShare,SharedArrayBuffer'
 );
 
+/* O MACOS FREAVA O APP quando outra janela cobria a nossa (o Chromium acha que está
+   escondido e derruba o ritmo dos quadros pra economizar bateria). Como o Caramujo fica
+   embaixo do FL Studio o tempo todo, isso acontecia justamente quando importa.
+   Estas três chaves desligam esse freio. */
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+
+/* AQUI MORAVA O 'disable-frame-rate-limit', E ELE ERA O TRAVAMENTO.
+   A ideia na etapa 1 era destravar os 120Hz da tela ProMotion. Só que essa chave
+   não levanta o teto de 60 pra 120: ela TIRA O TETO. O app passou a desenhar o
+   mais rápido que a máquina aguentasse, e o HUD do Bruno mostrou 630 quadros por
+   segundo numa tela que mostra 120. Dez vezes mais desenho do que aparece.
+   O resultado é o app comendo a máquina inteira sem folga nenhuma entre um quadro
+   e outro: mouse, menu e o resto do sistema passam a disputar espaço, e é isso
+   que se sente como travamento.
+   Sem a chave, o desenho volta a acompanhar a tela: 120 por segundo numa
+   ProMotion, 60 numa tela comum, que é exatamente o que a etapa 1 queria. */
+// app.commandLine.appendSwitch('disable-frame-rate-limit');  ← NÃO VOLTAR
+// o áudio do sistema chega em bloco pequeno: o buffer padrão do Chromium só somava atraso
+app.commandLine.appendSwitch('audio-buffer-size', '256');
+
 let win = null;
+const BENCH4 = process.argv.indexOf('--bench4') >= 0;
 
 /* liga/desliga o loopback: quando ligado, o getDisplayMedia do app recebe
    o áudio do sistema em vez de uma tela pra escolher. */
@@ -41,9 +64,11 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 1,
-    minHeight: 1,
-    backgroundColor: '#080809',
+    /* tamanho mínimo: janela sem moldura menor que isso some na tela e não tem
+       mais onde pegar pra arrastar */
+    minWidth: 120,
+    minHeight: 48,
+    backgroundColor: '#191919',
     title: 'Caramujo Vision',
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     frame: false,            // sem moldura: nada de barra de título nem botões
@@ -51,12 +76,42 @@ function createWindow() {
     fullscreenable: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      spellcheck: false
+      spellcheck: false,
+      backgroundThrottling: false   // idem: a janela coberta continua desenhando a 60fps
     }
   });
   win.setMenuBarVisibility(false); // Win/Linux: sem barra de menu na janela
-  win.loadFile(path.join(__dirname, '..', 'index.html'));
+  /* BANCADA 4 (npm run bench4): mede o custo da passada de pós na máquina de
+     verdade. Precisa ser aqui dentro, no mesmo motor gráfico do app: um número
+     tirado no navegador comum não vale pra decidir nada. */
+  if (BENCH4) {
+    win.loadFile(path.join(__dirname, '..', 'test', 'bench4.html'));
+    win.webContents.on('console-message', (e, lvl, msg) => { console.log(msg); });
+  } else {
+    win.loadFile(path.join(__dirname, '..', 'index.html'));
+  }
   win.on('closed', () => { win = null; });
+
+  /* GRAVAÇÃO VAI DIRETO PRA PASTA DOWNLOADS, sem a janela de "Salvar como".
+     Apertar ● de novo pra parar e o MP4 já está lá: o nome leva data e hora, então
+     um clipe nunca escreve por cima do outro. */
+  try {
+    session.defaultSession.on('will-download', (e, item) => {
+      const destino = path.join(app.getPath('downloads'), item.getFilename());
+      item.setSavePath(destino);
+      item.once('done', (ev, estado) => {
+        if (win && !win.isDestroyed()) win.webContents.send('cv-download', { ok: estado === 'completed', path: destino, name: item.getFilename() });
+      });
+    });
+  } catch (e) { /* sem sessão: cai no comportamento padrão do Electron */ }
+
+  /* avisa a tela sempre que a janela muda de tamanho ou lugar, pra ela guardar
+     e reabrir exatamente onde parou */
+  const tellBounds = () => {
+    if (win && !win.isDestroyed()) win.webContents.send('cv-bounds', win.getBounds());
+  };
+  win.on('resized', tellBounds);
+  win.on('moved', tellBounds);
 }
 
 /* ---------- captura NATIVA (estéreo de verdade, sem driver externo) ----------
@@ -123,10 +178,13 @@ ipcMain.handle('cv-native-stop', async () => {
   return true;
 });
 
-/* ---------- modo barra fixa (stick): gruda numa borda da tela, sempre na frente ----------
-   pos: 'off' | 'bottom' | 'top' | 'left' | 'right'. Nas laterais fica uma coluna estreita. */
+/* ---------- modo barra fixa (stick): gruda numa borda da tela ----------
+   pos: 'off' | 'bottom' | 'top' | 'left' | 'right'. size: a espessura que o
+   usuário escolheu (altura da barra ou largura da coluna). A borda é a da tela
+   onde a janela está, não sempre a principal: com dois monitores, a barra vai
+   pro monitor em que você deixou o app. */
 let stickPrevBounds = null;
-ipcMain.handle('cv-win-stick', (e, pos) => {
+ipcMain.handle('cv-win-stick', (e, pos, size) => {
   if (!win) return 'off';
   const { screen } = require('electron');
   if (!pos || pos === 'off') {
@@ -135,9 +193,10 @@ ipcMain.handle('cv-win-stick', (e, pos) => {
   }
   if (!stickPrevBounds) stickPrevBounds = win.getBounds();
   if (win.isFullScreen()) win.setFullScreen(false);
-  const area = screen.getPrimaryDisplay().workArea;
-  const BAR = 190;   // espessura da régua horizontal
-  const COL = 260;   // largura da coluna lateral
+  const area = screen.getDisplayMatching(win.getBounds()).workArea;
+  const sz = Math.round(+size || 0);
+  const BAR = Math.max(60, Math.min(area.height, sz || 170));   // altura da barra
+  const COL = Math.max(140, Math.min(area.width, sz || 300));   // largura da coluna
   let b;
   if (pos === 'top') b = { x: area.x, y: area.y, width: area.width, height: BAR };
   else if (pos === 'left') b = { x: area.x, y: area.y, width: COL, height: area.height };
@@ -146,6 +205,42 @@ ipcMain.handle('cv-win-stick', (e, pos) => {
   win.setBounds(b);
   return pos;
 });
+
+/* ---------- CONFIGURAÇÕES: a janela CRESCE em vez de a config cobrir os visuais ----------
+   É o que o MiniMeters faz. Na barra do topo (190px de altura) a config não cabe: antes
+   ela tomava a tela inteira e o Bruno não via o visual mudando enquanto mexia no slider.
+   Agora a janela estica pra baixo pelo tanto que a config precisa, e volta ao fechar.
+   Na coluna lateral (260px de largura) a janela alarga, senão as colunas não cabem. */
+let settingsPrev = null;
+ipcMain.handle('cv-win-settings', (e, open, px, side) => {
+  if (!win) return false;
+  const { screen } = require('electron');
+  if (open) {
+    if (settingsPrev) return true;            // já aberto
+    settingsPrev = win.getBounds();
+    const area = screen.getDisplayMatching(settingsPrev).workArea;
+    const b = Object.assign({}, settingsPrev);
+    if (side) {
+      // encaixe lateral: alarga pro lado que tiver espaço
+      b.width = Math.min(area.width, Math.max(b.width, 760));
+      if (b.x + b.width > area.x + area.width) b.x = Math.max(area.x, area.x + area.width - b.width);
+    } else {
+      const grow = Math.max(120, Math.min(px || 240, area.height - b.height));
+      b.height = b.height + grow;
+      // encostado no rodapé: cresce pra CIMA, senão sairia da tela
+      if (b.y + b.height > area.y + area.height) b.y = Math.max(area.y, area.y + area.height - b.height);
+    }
+    win.setBounds(b);
+  } else {
+    if (!settingsPrev) return false;
+    win.setBounds(settingsPrev);
+    settingsPrev = null;
+  }
+  return win.getBounds();
+});
+
+// mostra o vídeo gravado no Finder
+ipcMain.handle('cv-show-file', (e, p) => { try { require('electron').shell.showItemInFolder(String(p)); } catch (err) {} return true; });
 
 /* 📌 manter na frente das outras janelas (separado do encaixe) */
 ipcMain.handle('cv-win-pin', (e, on) => {
@@ -184,7 +279,7 @@ app.whenReady().then(async () => {
       const img = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'logo.png'));
       if (app.dock && !img.isEmpty()) app.dock.setIcon(img);
     } catch (e) {}
-    try { app.setAboutPanelOptions({ applicationName: 'Caramujo Vision', applicationVersion: '1.0.0' }); } catch (e) {}
+    try { app.setAboutPanelOptions({ applicationName: 'Caramujo Vision', applicationVersion: app.getVersion() }); } catch (e) {}
     // permissão de microfone: só serve pro plano B (BlackHole), o nativo não usa mic
     try { await systemPreferences.askForMediaAccess('microphone'); } catch (e) {}
   }
