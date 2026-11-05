@@ -137,7 +137,7 @@
   function freshState() {
     return {
       v: 2, theme: 'minimeters', pos: desk ? 'bottom' : 'free', pinned: false, fps: 0,
-      fx: { preset: 'off', amount: 0.8 }, recSize: 'tela', barH: BAR_DEF, colW: COL_DEF,
+      fx: { preset: 'off', amount: 0.8 }, recSize: 'tela', barH: BAR_DEF, colW: COL_DEF, reacao: 'forte',
       toolbar: 'auto', preset: 'barra', dirty: false, rows: rowsFromPreset(PRESET.barra), firstRun: true
     };
   }
@@ -203,6 +203,7 @@
     if (!st.fx || !(st.fx.preset in FX_NOMES)) st.fx = { preset: 'off', amount: 0.8 };
     st.fx.amount = Math.max(0, Math.min(1, +st.fx.amount || 0));
     if (!REC_PX[st.recSize] && st.recSize !== 'tela') st.recSize = 'tela';
+    if (!CV.REACOES.some(function (r) { return r[0] === st.reacao; })) st.reacao = 'forte';
     st.barH = Math.max(60, Math.min(600, +st.barH || BAR_DEF));
     st.colW = Math.max(140, Math.min(900, +st.colW || COL_DEF));
     st.rows = (Array.isArray(st.rows) ? st.rows : []).map(function (r) {
@@ -225,6 +226,14 @@
   }
   var state = loadState();
   CV.theme = state.theme;
+  /* REAÇÃO AO SOM (v2.2): quanto a música mexe nos visuais, pra tela inteira. Nasce em
+     Forte, que é o comportamento pedido: o grave comanda e o visual enche o painel.
+     Cada visual ainda tem o ajuste fino dele (Reação, ou Tamanho nos medidores). */
+  function aplicaReacao() {
+    var r = CV.REACOES.filter(function (x) { return x[0] === state.reacao; })[0];
+    CV.reacao = r ? r[2] : 1;
+  }
+  aplicaReacao();
   CV.cmap0 = 'auto';
   CV.bgAdj = { l: 0, s: 0, h: 0, c: 0 };
 
@@ -1104,7 +1113,10 @@
     if (!foco && cells.length) foco = cells[0];
     setFocusUid = foco ? foco.uid : null;
     var conta = {};
-    var h = '<div class="chips">';
+    var reacF = { k: 'reacao', label: 'Reação ao som', type: 'seg', opts: CV.REACOES.map(function (r) { return [r[0], r[1]]; }) };
+    var h = '<div class="form reac">' + ctrlHtml(reacF, state.reacao, 'reacao') + '</div>' +
+      '<p class="note reacnote">Quanto a música, principalmente o grave, mexe em todos os visuais. Em <b>Forte</b> eles crescem até quase o painel inteiro no kick. Espectro, Loudness, VU e Espectrograma continuam batendo com o MiniMeters.</p>';
+    h += '<div class="chips">';
     cells.forEach(function (c) {
       var nm = CV.registry[c.mod].name;
       conta[c.mod] = (conta[c.mod] || 0) + 1;
@@ -1136,6 +1148,10 @@
       h += '<p class="note">Nenhum visual na tela. Adicione um ou escolha um preset na barra de ferramentas.</p>';
     }
     setBody.innerHTML = h;
+    var reacEl = setBody.querySelector('.form.reac');
+    if (reacEl) wireCtrls(reacEl, { reacao: reacF }, function (k, v) {
+      state.reacao = v; aplicaReacao(); save();
+    });
     setBody.querySelectorAll('.chip[data-uid]').forEach(function (b) {
       b.addEventListener('click', function () { setFocusUid = b.getAttribute('data-uid'); renderSettings(); });
     });
@@ -1310,7 +1326,7 @@
     h += '</div></div><div class="sec"><h4>Como usar</h4>' +
       '<p class="note">Arraste a divisória entre dois visuais pra mudar o tamanho. Arraste pela alça <b>⋮⋮</b> pra trocar de lugar: solte do lado pra encaixar na linha, em cima ou embaixo pra abrir uma linha nova.</p>' +
       '<p class="note">O preset guarda quais visuais estão na tela e o tamanho de cada um. Tema e posição são separados.</p></div>' +
-      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision 2.0</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
+      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision 2.2</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
     setBody.innerHTML = h;
   }
   function setToolbarMode(m) {

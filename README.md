@@ -91,7 +91,17 @@ Na barra encaixada as linhas do preset viram uma fileira só; na coluna lateral,
 
 O VU nasce calibrado com 0 VU em -8 dBFS, que é onde um beat masterizado dança em volta do 0. Pra mixar, troque pra -18 nos ajustes dele.
 
-**Arte (10).** PSY, Lissajous, Traço, Fluxo, Camadas, Fita, Enxame, Aurora, Cordas, Malha. Todos seguem a mesma regra: o áudio é quem manda, e no silêncio a tela para e apaga.
+**Arte (10).** PSY, Lissajous, Traço, Fluxo, Camadas, Fita, Enxame, Aurora, Cordas, Malha. Todos seguem a mesma regra: o áudio é quem manda, e no silêncio a tela para e apaga. O grave comanda o tamanho: no kick cada um cresce até quase o painel inteiro.
+
+## Reação ao som
+
+Em **Ajustes › Visuais**, no topo: **Leve**, **Média**, **Forte** ou **Máxima**. É quanto a música, principalmente o grave, mexe em todos os visuais. Nasce em **Forte**.
+
+- Cada visual de arte tem a sua **Reação** nos ajustes dele, pra ajuste fino (100% = o que vale pra tela inteira).
+- Onda, Osciloscópio e Estéreo têm **Tamanho**: **Encher** (o padrão: a forma enche o painel em qualquer volume) ou **Nível real** (o ganho fixo, pra ler a folga da mixagem).
+- Espectro, Loudness, VU e Espectrograma ficam fora da Reação e continuam batendo com o MiniMeters.
+
+O grave se ajusta sozinho ao volume do que está tocando. Um master a -8 LUFS e um YouTube baixinho fazem o mesmo desenho.
 
 ## Temas
 
@@ -145,6 +155,15 @@ Quando o som para, os medidores apagam em 2 segundos e o app **para de desenhar*
 Em **Ajustes › Janela** dá pra limitar os quadros por segundo: **Da tela** acompanha o monitor (120 numa tela ProMotion, 60 numa comum); **30** economiza bateria e deixa a máquina livre pro FL Studio.
 
 Aperte `F` pra ver os quadros por segundo e quanto tempo o som leva pra chegar na tela.
+
+## v2.2: reação ao som
+
+- O grave voltou a mandar. O sinal que a arte usava vivia no talo (no beat demo a mediana era 0,997 de 1), então o kick não tinha pra onde subir. Agora ele encosta no 1 no kick e desce no vale.
+- Os visuais crescem até quase o painel inteiro no kick e voltam no vale. Numa barra larga, Lissajous, Fita e Estéreo usam a largura toda (o Lissajous ocupava 6% da barra de 1440x170).
+- **Reação ao som** nos ajustes, nascendo em Forte, e **Tamanho** (Encher ou Nível real) na Onda, no Osciloscópio e no Estéreo.
+- O PSY escurece no vale e explode no kick (antes acendia igual o tempo todo).
+- Camadas e Fita respiram inteiras: a pilha estica no kick e a fita abre com o rastro junto. Na primeira versão da 2.2 as duas ficavam do mesmo tamanho no kick e no vale.
+- Consertado: a Malha perdia pedaços. O relevo caía fora das três faixas de profundidade e a linha sumia.
 
 ## v2.1: medidores lisos
 
@@ -205,7 +224,7 @@ Em **Ajustes › Áudio** o estado mostra **Estéreo nativo** quando ele está a
 npm test
 ```
 
-Roda 131 checagens em 1 ou 2 segundos: motor de áudio, os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
+Roda 144 checagens em 1 ou 2 segundos: motor de áudio, a reação ao grave (um beat sintético em dois volumes), os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
 
 ## Estrutura
 

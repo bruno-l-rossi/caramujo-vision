@@ -232,6 +232,155 @@ check('17 visuais: os 7 medidores do MiniMeters e as 10 artes', Object.keys(CV.r
   check('VU tem os dois estilos e a referência de mix', def.schema[0].opts.length === 2 && def.schema[1].opts.some((o) => o[0] === -18));
 }
 
+/* ================= v2.2 · reação ao som ================= */
+console.log('reação ao som:');
+{
+  /* beat sintético de rap a 90 BPM: kick (55Hz que cai em 120ms) + 808 segurando (45Hz,
+     400ms) + chimbal (ruído curto). O mesmo beat em dois volumes: cheio e -12 dB. */
+  const sr = 48000, chunk = 800, spb = Math.round(sr * 60 / 90);
+  let semente = 7;
+  const rnd = () => { semente = (semente * 16807) % 2147483647; return semente / 2147483647 - 0.5; };
+  const beat = (n, ganho) => {
+    const l = new Float32Array(n), r = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const ph = i % spb, t = ph / sr, hat = (i % (spb / 2)) / sr;
+      const kick = Math.sin(2 * Math.PI * 55 * t) * Math.exp(-t / 0.12) * 0.75;
+      const b808 = t < 0.4 ? Math.sin(2 * Math.PI * 45 * t) * 0.35 * (1 - t / 0.4) : 0;
+      const ch = rnd() * Math.exp(-hat / 0.02) * 0.12;
+      l[i] = (kick + b808 + ch) * ganho; r[i] = (kick + b808 - ch * 0.6) * ganho;
+    }
+    return [l, r];
+  };
+  const roda = (ganho, seg) => {
+    const E = new g.AudioEngine();
+    E.sourceKind = 'system'; E.nativeOn = true; E.sr = sr; E.setupLufs(sr); E.setupBeat();
+    const [L, R] = beat(Math.round(sr * seg), ganho), serie = [];
+    for (let off = 0; off + chunk <= L.length; off += chunk) {
+      E.feed(L.subarray(off, off + chunk), R.subarray(off, off + chunk), chunk);
+      E.update(chunk / sr);
+      serie.push({ t: off / sr, ph: (off % spb) / sr, grave: E.grave, soco: E.soco, bass: E.bass, energia: E.energia, ondaRef: E.ondaRef, ondaVivo: E.ondaVivo });
+    }
+    return { E, serie: serie.filter((s) => s.t > 2) };
+  };
+  const cheio = roda(1, 6), baixo = roda(0.25, 6);
+  const noKick = (s) => s.ph < 0.06, noVale = (s) => s.ph > 0.5;
+  const media = (a, k) => a.reduce((x, s) => x + s[k], 0) / Math.max(1, a.length);
+  const gK = media(cheio.serie.filter(noKick), 'grave'), gV = media(cheio.serie.filter(noVale), 'grave');
+  check('o grave novo encosta no 1 no kick e desce no vale', gK > 0.85 && gV < 0.3, 'kick ' + gK.toFixed(2) + ' · vale ' + gV.toFixed(2));
+  const bK = media(cheio.serie.filter(noKick), 'bass'), bV = media(cheio.serie.filter(noVale), 'bass');
+  check('o d.bass antigo fica perto do talo nos dois (era o visual parado)', bK - bV < gK - gV, 'bass kick ' + bK.toFixed(2) + ' · vale ' + bV.toFixed(2));
+  const sK = media(cheio.serie.filter(noKick), 'soco'), sV = media(cheio.serie.filter(noVale), 'soco');
+  check('o soco dispara no ataque do kick e some no sustain', sK > 0.5 && sV < 0.08, 'kick ' + sK.toFixed(2) + ' · vale ' + sV.toFixed(2));
+  const dif = Math.max.apply(null, cheio.serie.map((s, i) => Math.abs(s.grave - baixo.serie[i].grave)));
+  check('o grave não depende do volume (o mesmo beat a -12 dB dá o mesmo desenho)', dif < 0.08, 'maior diferença ' + dif.toFixed(3));
+  const rOnda = baixo.serie[baixo.serie.length - 1].ondaRef / cheio.serie[cheio.serie.length - 1].ondaRef;
+  check('a régua da forma de onda acompanha o volume (autoganho)', Math.abs(rOnda - 0.25) < 0.03, 'razão ' + rOnda.toFixed(3));
+
+  // cada visual que mudou CRESCE no kick e ocupa boa parte do painel
+  function caixaCtx() {
+    const cx = { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 }, grad = { addColorStop() {} };
+    const pt = (x, y) => { if (!(isFinite(x) && isFinite(y))) return; if (x < cx.x0) cx.x0 = x; if (x > cx.x1) cx.x1 = x; if (y < cx.y0) cx.y0 = y; if (y > cx.y1) cx.y1 = y; };
+    const px = new Proxy({}, {
+      get(t, k) {
+        if (k === '_cx') return cx;
+        if (k === 'canvas') return t._canvas;
+        if (k in t) return t[k];
+        if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => grad;
+        if (k === 'measureText') return (s) => ({ width: String(s || '').length * 6 });
+        if (k === 'moveTo' || k === 'lineTo') return (x, y) => pt(x, y);
+        if (k === 'quadraticCurveTo') return (a, b, x, y) => { pt(a, b); pt(x, y); };
+        if (k === 'rect' || k === 'fillRect') return (x, y, w, h) => { if (t.globalCompositeOperation === 'destination-out') return; pt(x, y); pt(x + w, y + h); };
+        if (k === 'arc') return (x, y, r) => { pt(x - r, y - r); pt(x + r, y + r); };
+        if (k === 'ellipse') return (x, y, rx, ry) => { pt(x - rx, y - ry); pt(x + rx, y + ry); };
+        return () => {};
+      },
+      set(t, k, v) { t[k] = v; return true; }
+    });
+    return px;
+  }
+  const W = 480, H = 270;
+  const cresce = [];
+  ['lissa', 'trace', 'flow', 'wavelayers', 'silk', 'enxame', 'cordas', 'malha', 'gonio', 'scope'].forEach((id) => {
+    const def = CV.registry[id], cv = makeEl('canvas');
+    cv.width = W; cv.height = H;
+    const m = { canvas: cv, ctx: null, w: W, h: H, dpr: 1, st: {}, modId: id, s: Object.assign({}, def.defaults), mouse: { over: false } };
+    const E = new g.AudioEngine();
+    E.sourceKind = 'system'; E.nativeOn = true; E.sr = sr; E.setupLufs(sr); E.setupBeat();
+    const [L, R] = beat(Math.round(sr * 5), 0.5);
+    const tamK = [], tamV = [];
+    m.ctx = caixaCtx(); m.ctx._canvas = cv; def.init(m);
+    for (let off = 0; off + chunk <= L.length; off += chunk) {
+      E.feed(L.subarray(off, off + chunk), R.subarray(off, off + chunk), chunk);
+      E.update(chunk / sr);
+      const ctx = caixaCtx(); ctx._canvas = cv; m.ctx = ctx;
+      def.draw(m, E, chunk / sr, off / sr);
+      if (off / sr < 2) continue;
+      // tamanho = altura ocupada (quem já nasce de borda a borda na largura) ou o maior lado (figura que gira)
+      const b = ctx._cx, fw = b.x1 > b.x0 ? Math.min(1, (b.x1 - b.x0) / W) : 0, fh = b.y1 > b.y0 ? Math.min(1, (b.y1 - b.y0) / H) : 0;
+      const area = ['trace', 'wavelayers', 'gonio', 'scope', 'malha'].indexOf(id) >= 0 ? fh : Math.max(fw, fh);
+      const ph = (off % spb) / sr;
+      if (ph > 0.03 && ph < 0.16) tamK.push(area); else if (ph > 0.5) tamV.push(area);
+    }
+    const k = tamK.reduce((a, b) => a + b, 0) / tamK.length, v = tamV.reduce((a, b) => a + b, 0) / tamV.length;
+    cresce.push([id, k, v]);
+  });
+  /* Os que têm o TAMANHO amarrado ao grave (Lissajous, Traço, Malha, Estéreo,
+     Osciloscópio) têm que ser bem maiores no kick do que no vale. Fluxo, Enxame e Cordas
+     já moram de borda a borda: neles o grave mexe em velocidade, estouro e vibração.
+     v2.2b: Camadas e Fita entraram na conta. Na primeira v2.2 elas davam o mesmo tamanho
+     no kick e no vale (Camadas 90/85, Fita 71/73 com este beat): a pilha e o rastro
+     seguravam o desenho. Agora a pilha estica e a fita inteira abre no grave de agora.
+     Piso no kick: este beat é mono e o kick sintético cai em 120ms, então os números
+     ficam abaixo do beat demo. Medido na v2.1 com ESTE beat: Lissajous 20%, Traço 20%,
+     Estéreo 27%, Osciloscópio 24%. O piso fica no dobro disso, mais ou menos. */
+  const PISO = { lissa: 0.45, trace: 0.35, gonio: 0.45, scope: 0.45 };
+  // a Malha é um tecido que já mora quase de borda a borda: cresce menos em proporção
+  const CRESCE = { lissa: 1.3, trace: 1.3, gonio: 1.3, scope: 1.3, malha: 1.15, wavelayers: 1.12, silk: 1.12 };
+  const ruins = cresce.filter(([id, k, v]) => k < (PISO[id] || 0.6) || (CRESCE[id] && !(k > v * CRESCE[id])));
+  check('no kick os visuais de desenho ocupam o painel e os de tamanho crescem com o grave', ruins.length === 0,
+    cresce.map(([id, k, v]) => id + ' ' + Math.round(k * 100) + '/' + Math.round(v * 100)).join(' · '));
+
+  // ENCHER x NÍVEL REAL na Onda: com o som baixo, o Encher sobe a forma até a faixa
+  const altura = (tamanho) => {
+    const def = CV.registry.wavescroll, cv = makeEl('canvas'); cv.width = 400; cv.height = 200;
+    const m = { canvas: cv, ctx: cv.getContext('2d'), w: 400, h: 200, dpr: 1, st: {}, modId: 'wavescroll', s: Object.assign({}, def.defaults, { tamanho }) };
+    let maior = 0;
+    const criar = g.document.createElement;
+    g.document.createElement = (tag) => {
+      const el = makeEl(tag);
+      el.getContext = () => { const c = caixaCtx(); c._canvas = el; return new Proxy(c, { get(t, k) { if (k === 'fillRect') return (x, y, w, h) => { if (h > maior) maior = h; }; return t[k]; }, set(t, k, v) { t[k] = v; return true; } }); };
+      return el;
+    };
+    try {
+      def.init(m);
+      const E = baixo.E;
+      const [L, R] = beat(Math.round(sr * 3), 0.25);
+      for (let off = 0; off + chunk <= L.length; off += chunk) { E.feed(L.subarray(off, off + chunk), R.subarray(off, off + chunk), chunk); E.update(chunk / sr); def.draw(m, E, chunk / sr, off / sr); }
+    } finally { g.document.createElement = criar; }
+    return maior / (m.st.buf ? m.st.buf.height / 2 : 100);
+  };
+  const aE = altura('encher'), aR = altura('real');
+  check('Onda no Encher: com o som a -12 dB a forma sobe até perto da borda da faixa', aE > 0.8 && aE > aR * 2.5, 'encher ' + aE.toFixed(2) + ' · nível real ' + aR.toFixed(2));
+
+  // Reação ao som: os quatro degraus, Forte = 1 e o app nasce nele
+  check('Reação ao som tem Leve, Média, Forte e Máxima, e Forte vale 1', CV.REACOES.length === 4 && CV.REACOES.filter((r) => r[0] === 'forte')[0][2] === 1);
+  check('o app nasce em Reação Forte', A.state.reacao === 'forte' && CV.reacao === 1);
+  check('Reação estragada no estado salvo volta pra Forte', A.normalize({ v: 2, reacao: 'turbo', rows: [] }).reacao === 'forte');
+  {
+    const m = { s: { sens: 1 }, st: {} };
+    CV.reacao = 0.45; const leve = CV.respira(m, 1, 0.5);
+    CV.reacao = 1.45; const max = CV.respira(m, 0.7, 0.5);
+    CV.reacao = 1;
+    check('Leve segura perto do repouso, Máxima encosta no painel antes do kick cheio', leve < 0.75 && max === 1, 'leve ' + leve.toFixed(2) + ' · máxima ' + max.toFixed(2));
+  }
+  // os medidores de número continuam fora da Reação: nada de autoganho no Espectro, Loudness, VU e Espectrograma
+  const trecho = (id) => { const a = srcMods.indexOf("CV.register('" + id + "'"), b = srcMods.indexOf('CV.register(', a + 10); return srcMods.slice(a, b < 0 ? undefined : b); };
+  const vaza = ['spectrum', 'loudness', 'vu', 'spectrogram'].filter((id) => /CV\.(rx|som|respira|alvoEncher|ganhoOnda)\(|reacao/.test(trecho(id)));
+  check('Espectro, Loudness, VU e Espectrograma seguem calibrados (fora da Reação)', vaza.length === 0, vaza.join(',') || 'os 4 limpos');
+  const comTam = ['wavescroll', 'scope', 'gonio'].filter((id) => (CV.registry[id].schema || []).some((f) => f.k === 'tamanho' && f.opts.some((o) => o[0] === 'real')));
+  check('Onda, Osciloscópio e Estéreo têm Tamanho: Encher ou Nível real', comTam.length === 3 && ['wavescroll', 'scope', 'gonio'].every((id) => CV.registry[id].defaults.tamanho === 'encher'));
+}
+
 /* ================= layout em linhas, presets e estado ================= */
 console.log('layout e presets:');
 const S = A.state;

@@ -415,6 +415,9 @@ body.set-open #grid { bottom: var(--set-h); }
   color: var(--text);
 }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+/* Reação ao som: vale pra tela inteira, então mora acima dos visuais, separada por um fio */
+.form.reac { margin-bottom: 6px; }
+.note.reacnote { margin: 0 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); max-width: none; }
 .chip {
   height: 27px;
   display: inline-flex;

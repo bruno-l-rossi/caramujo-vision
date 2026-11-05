@@ -114,12 +114,56 @@ Controle: um só. `PÓS` na gaveta, com RÉGUA / PRATA / VIDRO / OFF e uma inten
 - 60fps nos medidores, sempre. Quando o computador aperta, a arte é que simplifica; o medidor nunca cede.
 - Decaimento suave (nada corta seco: picos caem com inércia).
 - Tempo real: o som é medido direto, sem intermediário, e o nível sai de uma janela de 5 milésimos de segundo. O beat é detectado a cada 2,7 milésimos, não a cada quadro. Ataque quase instantâneo, queda suave.
-- Grave (20–150Hz) comanda escala, deformação e pulso. É o som do rideblan, os graves têm que aparecer.
+- Grave (20–160Hz) comanda escala, deformação e pulso. É o som do rideblan, os graves têm que aparecer. Desde a v2.2 esse grave **se ajusta ao volume da música**: encosta no 1 no kick e desce no vale, em qualquer volume de entrada (ver "Reação ao som").
 - Beat detectado dispara evento: flash, explosão de partículas, empurrão no fluido.
 - Agudos comandam brilho, faísca e detalhe fino.
 - **Dorme no silêncio.** Depois do fade (0,5s de espera, 2,2s pra sumir) o app limpa os painéis uma vez e para de desenhar até o som voltar. O motor de áudio continua ouvindo.
 - **Rolagem em tempo, não em quadro.** A onda e o espectrograma andam na mesma velocidade a 60Hz, 120Hz ou com o limite de 30 quadros, e deslizam em fração de pixel (v2.1).
 - **Rastro apaga por opacidade** (`CV.fade`, destination-out). O véu na cor do fundo empacava em 8 bits (parava em 18 quando o tema pede 25) e todo painel com rastro virava um quadrado mais escuro que os vizinhos.
+
+## Reação ao som (v2.2)
+
+Pedido do Bruno: a música mexendo mais nos visuais, principalmente o grave, e cada visual crescendo até ocupar boa parte do painel. Isso é configurável, mas o padrão é esse.
+
+**A causa era o sinal.** O grave que a arte usava saía do mapa de dB da v1, onde qualquer raia acima de -35 dBFS vira 255. Num master de rap o grave passa disso o tempo todo: no beat demo (-12 LUFS) a mediana era 0,997 de 1 e o p75 era 1,000. Entre um kick e outro o sinal já estava no máximo, então o kick não tinha pra onde subir. O PSY recebia 1,4 cravado e acendia igual o tempo inteiro.
+
+**O sinal novo.** O motor mede cada banda em amplitude a cada 128 amostras, alisa em ~20ms e divide por uma régua que acompanha o volume da música (sobe em 50ms, desce ~2 dB/s). Medido no beat demo: o grave vai de 0 no vale a 1 no kick, e o mesmo beat 12 dB mais baixo dá o mesmo desenho, ponto por ponto.
+
+| Sinal | O que é | Quem usa |
+| --- | --- | --- |
+| grave | até 160Hz, solta em 170ms | escala, empurrão, relevo, o raio da órbita |
+| soco | o ataque do grave: dispara no kick, zera no sustain do 808 | estouro, coice, palhetada |
+| energia | o som inteiro, solta em 240ms | tamanho de base: parte cheia ocupa mais que a quebra |
+| medio, agudo | 160Hz a 2,5kHz e acima | enrugado, tremor, faísca |
+| ondaVivo / ondaRef | pico de amostra recente (desce em 0,8s / 3s) | autoganho de quem desenha a forma de onda |
+
+**As regras de desenho:**
+
+- Quanto o som mexe = **Reação ao som** (Ajustes › Visuais: Leve 0,45, Média 0,7, **Forte 1**, Máxima 1,45) vezes a **Reação** do visual.
+- Tamanho que respira: cada visual tem um repouso (a fração do painel sem batida) e o kick leva ele até o painel inteiro. Em Leve ele fica perto do repouso; em Máxima encosta na borda antes do kick cheio.
+- Forma de onda entra com autoganho: o pico recente da música vira a borda. A arte usa a régua viva (0,8s), então numa quebra sem grave a figura volta a encher em menos de 1s.
+- Na borda entra um joelho macio: até 75% do limite passa reto, e daí em diante o visual encosta devagar.
+- Barra larga ganha figura larga: Lissajous, Fita e Estéreo usam um raio por eixo, do formato do painel. Numa barra de 1440x170 o Lissajous ocupava 6% da largura e a Fita 14%.
+- **Os quatro medidores de número ficam de fora.** Espectro, Loudness, VU e Espectrograma continuam batendo com o MiniMeters, e o teste cobra que nenhum deles leia a Reação.
+- Onda, Osciloscópio e Estéreo ganharam **Tamanho**: Encher (padrão: o pico recente vai a 95% da faixa na Reação Forte) ou Nível real (o ganho fixo de antes, pra ler a folga).
+
+**O que o grave faz em cada visual:**
+
+| Visual | No kick |
+| --- | --- |
+| PSY | o líquido derrete até quase o dobro, a mancha cresce (o zoom cai até ~40%) e a vinheta abre |
+| Aurora | a cortina sobe: o pé desce e o topo sobe, e a luz toma o painel |
+| Lissajous | a figura vai de 72% a 100% do painel e gira mais rápido; o miolo abre (raio^0,65) |
+| Traço | a ondulação lenta cresce com o grave e o kick estufa a corda inteira |
+| Fluxo | o pó acelera, engorda e abre a partir do centro; no vale se recolhe devagar |
+| Camadas | cada retrato nasce com o tamanho do grave daquele instante, e a pilha inteira respira: o topo sobe de 20% pra 4% da altura e todas as cristas estufam (v2.2b) |
+| Fita | a órbita abre numa elipse do tamanho do painel, o soco dá o coice pra fora e a fita inteira, rastro junto, abre com o grave de agora; no vale recolhe pra 2/3 (v2.2b) |
+| Enxame | o bando afrouxa enquanto o grave segura e estoura no beat, do tamanho do kick |
+| Cordas | as cordas abaixo de 160Hz seguem o grave e levam a palhetada; a vibração passa do vão (até 1,8 vão) |
+| Malha | o relevo levanta e o tecido estica de 66% a 86% da altura |
+| Onda | (Encher) enche a faixa em qualquer volume |
+| Osciloscópio | (Encher) a curva bate em 95% da metade do painel, pela própria régua |
+| Estéreo | (Encher) cúpula em meia elipse do formato do painel, nuvem com autoganho, ponto engorda no grave |
 
 ## Interação
 
@@ -218,6 +262,6 @@ Mais os do usuário em "Meus presets". A tela da v1 e os templates com nome pró
 
 Medidores (7, os do MiniMeters): onda (três bandas em camadas, um canal por faixa, linha de zero por pista), espectro (duas curvas lisas, preenchimento pela altura, brilho na batida, leitura de dBFS e nota no hover), loudness (LUFS pela ITU-R BS.1770, curto e médio, o médio em número grande sem caixa), estéreo (cúpula com a raiz no rodapé, ponto redondo), osciloscópio (trava no tom, curva lisa com véu), espectrograma, **VU** (novo na v2: agulha com escala linear em tensão, 0 VU a 71% do arco, balística de 300 ms, referência -8 dBFS com opção de -18 pra mixar, estilo barra pra tira estreita).
 
-Arte (10): PSY (shader líquido), AURORA (cortinas), LISSAJOUS, FITA, TRAÇO, FLUXO (pó de partículas), CAMADAS (ondas em relevo), ENXAME (constelação que junta e rompe no beat), CORDAS (harpa por banda), MALHA (tecido 3D).
+Arte (10): PSY (shader líquido), AURORA (cortinas), LISSAJOUS, FITA, TRAÇO, FLUXO (pó de partículas), CAMADAS (ondas em relevo), ENXAME (constelação que junta e rompe no beat), CORDAS (harpa por banda), MALHA (tecido 3D). Todos crescem no kick e respondem à Reação ao som (v2.2).
 
 Cortados por decisão do Bruno e apagados do código: túnel, maré, ascii, terreno, harmonógrafo, tinta, barras 3d, colmeia, vitral, cascata, túnel de fios, nó, órbita, contorno.

@@ -1,5 +1,64 @@
+<v22_reacao_ao_som_novembro_2026>
+LEIA ESTE PRIMEIRO, depois o da v2.1 e o da v2. Terceira rodada de novembro.
+PEDIDO DO BRUNO: visuais mais responsivos à música, principalmente ao grave; por padrão a música com impacto maior no movimento; todos crescendo até ocupar boa parte do painel; configurável, mas o padrão é esse.
+DECISÃO DELE (perguntada, opção "Arte + forma"): mudam as 10 artes, a Onda, o Osciloscópio e o Estéreo. Espectro, Loudness, VU e Espectrograma ficam calibrados, iguais ao MiniMeters. NÃO colocar Reação nesses 4 sem ele pedir (o smoke tem guarda). Ele CONFIRMOU de novo na v2.2b: "pode manter a decisão de ontem".
+
+v2.2b (manhã de 5/nov): a conversa da v2.2 acabou os tokens ANTES da entrega final. Os arquivos já estavam gravados na pasta (sem commit, app instalado ainda 2.1.0). Auditoria do pedido ponto a ponto:
+- Tudo do bloco abaixo estava aplicado e o smoke passava. Faltava a entrega e duas artes.
+- Bancada nova lab/kv.js (fora do repo): por visual, média de largura, altura e luz nos quadros do quinto de CIMA do grave de referência contra o quinto de BAIXO. É a conta que mostra se o visual muda do kick pro vale; a mediana sozinha escondia.
+- CAMADAS e FITA davam o mesmo tamanho no kick e no vale (Camadas altura 0,68 > 0,65; Fita área 0,57 > 0,56). A pilha de 14 camadas sempre carrega um beat inteiro de cristas, e o rastro da Fita (1 a 2,5s) segurava o desenho.
+- Camadas: pk = env(min(1, (0,55 grave + 0,7 soco) x rx), 12ms/150ms); topo da pilha = h x (0,2 - 0,16 pk), pé preso em 0,94h; amplitude de TODAS as camadas x (0,8 + 0,45 pk). Agora 0,64 > 0,71 de altura, luz x1,19.
+- Fita: o rastro guarda a posição EM RELAÇÃO AO CENTRO (antes era absoluta) e o desenho escala tudo por P = env(respira(0,5 grave + 0,7 soco, 0,66), 35ms/250ms), joelho só no desenho. Órbita maior: rT = (0,1 + 0,95 x abre x (0,85 + 0,15 sen)). Agora área 0,44 > 0,64. CUIDADO com o fade: escalar o rastro inteiro com o CV.fade em 0,82 deixava 20 contornos da mesma fita (hachura) e borrão de zoom. Conserto: o fade da Fita usa trail x (1 - min(0,85, |dP| x 40)) e o CV.fade foi pra depois do cálculo do P (no !d continua no topo). Abrir em 12ms também fazia anéis: ficou 35ms.
+- Smoke: CRESCE ganhou wavelayers 1,12 e silk 1,12 (com o beat sintético: Camadas 94/81, Fita 81/65; a v2.2 velha dá 90/85 e 71/73 e FALHA). Continua 144 checagens.
+- App inteiro conferido no Chrome (lab/app-test.js): beat demo pelo caminho de verdade, Reação ao som no topo da aba Visuais com Forte marcado, clique em Máxima grava "reacao":"maxima" no cv2-state e põe CV.reacao em 1,45. Presets Ambiente e Clipe sem erro.
+NÚMEROS FINAIS (640x360, vale > kick): PSY luz x2,55 (v2.1 x1,13) · Aurora x2,82 (x1,27) · Lissajous área 0,10 > 0,37 · Traço altura 0,28 > 0,53 (v2.1 0,47 > 0,48) · Fluxo luz x2,55 (x1,18) · Camadas 0,64 > 0,71 · Fita área 0,44 > 0,64 · Enxame área 0,71 > 0,88 · Cordas x1,28 (x1,06) · Malha altura 0,67 > 0,90 (0,80 > 0,82) · Estéreo altura 0,27 > 0,86 · Osciloscópio 0,25 > 0,63 · Onda igual no som alto (o Encher é pra som baixo: 26% > 93% da faixa).
+FICOU COMO ESTAVA, de propósito: a bola branca do Lissajous no vale (já existia na v2.1, menor) e a Cordas, que reage mais nas cordas graves por ser harpa por banda.
+
+DIAGNÓSTICO (demo-beat.wav, -12 LUFS): d.bass sai do mapa legado (raia acima de -35 dBFS = 255): mediana 0,997, p75 1,000. d.mid entre 0,81 e 0,91. Entre kicks o sinal já estava no talo, o kick não tinha pra onde subir. glFrame mandava u_bass 1,4 cravado: o PSY acendia igual o tempo todo.
+
+MOTOR (audio.js):
+- processBeat ganhou lpM (um polo em 2,5kHz) e energia por banda a cada passo de 128 amostras: B = lp2 de 160Hz (o mesmo do beat), F = sinal inteiro, M = lpM - lp2, H = x - lpM. Energia alisada em 22/22/12/8 ms (sem isso o 808 de 50Hz tremia 15% de quadro pra quadro: 128 amostras é menos que um ciclo) e o maior passo desde o último quadro (pkB, pkF, pkM, pkH), mais o pico de amostra (wPk).
+- updateReacao(dt), chamado no update depois do beat: env = max(pico, env x e^(-dt/solta)). CUIDADO: a primeira versão fazia "pico > env ? pico : env x decai" e alternava 9% quadro sim, quadro não. Régua sobe em 50ms, desce com tau de 4s, piso por banda. v = (env/régua)^expoente. Tabelas (grave, cheio, médio, agudo): REAC_SOLTA 0,17 / 0,24 / 0,14 / 0,09 s, REAC_EXP 1,7 / 1,0 / 1,3 / 1,3, REAC_PISO 0,010 / 0,012 / 0,005 / 0,0025. Sem alocação por quadro (Float64Array no estado).
+- Saídas: d.grave, d.energia, d.medio, d.agudo (0..1); d.soco = (envB - média de 120ms) / régua x 2,4, solta 0,11s (dispara no ataque, zera no sustain do 808); d.ondaRef (pico de amostra, desce em 3s, pros medidores) e d.ondaVivo (desce em 0,8s, pra arte), piso 0,025.
+- d.bass, d.mid, d.high e d.level continuam IGUAIS (gate, pós e o resto leem deles).
+- Medido: grave p5 0 / p50 0,10 / p75 0,82 / p95 1. O mesmo beat a -12 dB dá a mesma série (diferença 0,000). update() foi de ~205 pra ~262 µs no bench.
+
+MÓDULOS (modules.js, bloco "v2.2 · REAÇÃO AO SOM" antes do CV.rate):
+- CV.reacao (o app escreve), CV.REACOES = leve 0,45 / media 0,7 / forte 1 / maxima 1,45. CV.rx(m) = reacao x m.s.sens. CV.som(d) devolve d ou uma reserva tirada dos sinais velhos. CV.respira(m, sinal, repouso) = repouso + (1 - repouso) x min(1, sinal x rx). CV.env(m, chave, alvo, dt, sobe, desce). CV.ganhoOnda(d, alvo, teto) pela ondaVivo. CV.abreMiolo(v) = |v|^0,65. CV.joelho(v, lim): reto até 75% do limite, tanh daí em diante. CV.alvoEncher() = min(1,15, 0,5 + 0,45 x reacao).
+- CV.gate perdeu o sens (Reação diz quanto mexe, não se tem som). CV.rate usa max(beatPulse, soco) x min(1,6, rx). glFrame: u_bass = (0,26 + gS + 0,35 x soco) x rx com gS em envelope de 12/90ms; u_mid, u_high e u_beat saem dos sinais novos.
+- O campo 'sens' virou "Reação" (0,2 a 2,5, em %) no COMMON, no PSY e na Aurora. Quem tinha mexido continua com o valor, agora como multiplicador da Reação.
+- Por visual (tabela de leitura no DESIGN.md, seção Reação ao som). Detalhes técnicos que custaram teste:
+  PSY: vinheta pela proporção do painel (era pelo lado menor: na barra 1440x170 o PSY acendia 13%); zoom / (1 + 0,42 x ...) faz a mancha crescer no kick; sparkle do agudo caiu de 0,32 pra 0,18 (no vale escuro virava ruído de pixel).
+  Aurora: vfall sobe com g; brilho curtain x (0,8 + 0,5g). Com 1,1 + 1,3g a cortina virava bloco rosa chapado.
+  Lissajous: sem c.rotate (rotação na mão), um raio por eixo com teto 5:1, miolo raio^0,65, joelho em 0,86, repouso 0,72.
+  Traço: repouso 0,85, ondulação h x 0,22 x (0,9 + ...), joelho só no desenho (st.yd), o estado fica livre.
+  Fluxo: abre a partir do centro ((p - c) x abre, negativo no vale), grão até 1,35x, velocidade até ~(8 + 70e + 336) x kV px/s.
+  Camadas: retrato nasce com ganho x respira(0,5); SEM abreMiolo (o chiado virava serra no rodapé); pilha de 14% a 94% da altura. [v2.2b: a pilha inteira respira, ver acima.]
+  Fita: elipse w x 0,46 por h x 0,46 (era círculo do lado menor: 14% da barra), mola 26/7, coice 17 x soco por segundo, repouso 0,55. [v2.2b: rastro relativo ao centro, escala P e fade adaptativo, ver acima.]
+  Enxame: ficou a física antiga (atração + estouro no beat) com atração x (1,1 - 0,62g) e estouro x (0,6 + 0,6 x max(soco, g)). Testado e descartado: mola por raio (virou bolha branca no meio) e empurrão contínuo pra fora (o bando grudava nas bordas).
+  Cordas: dB por corda contra o próprio pico (desce 8 dB/s), cordas abaixo de 160Hz seguem o grave, soco palheta com peso (1 - i/N)^1,5, vibração até 1,8 vão.
+  Malha: relevo (0,35 + 1,15g) e (0,2 + 0,55m), relevo menor perto da borda de cima e de baixo (cos: as fileiras se dobravam e viravam serrote), faixa de profundidade decidida POR SEGMENTO. Bug antigo consertado: com bn = 1 cravado o ponto caía fora das três faixas e a linha sumia, e a malha da v2.1 saía cheia de buraco.
+- Medidores de forma: campo 'tamanho' (encher | real), padrão encher; 'real' = o desenho exato de antes.
+  Onda: ganho = alvoEncher / ondaRef (teto 10x).
+  Osciloscópio: régua própria do pico da curva (sobe 30ms, desce 1,5s), joelho em 1,02, altura h x 0,47. O pico do som não serve de régua: a média de cada pedaço come o pico do agudo.
+  Estéreo: a cúpula vira meia elipse (RY até w x 0,47 x 1,5, RX até 2,8 x RY), G = 1,3 x alvo / (2 x ondaRef), rn = joelho(soma x G, 1) (cortar em 1 empilhava uma faixa branca no arco), ponto x (1 + 0,5 x gS x rx).
+
+APP: state.reacao ('forte', normalize conserta), aplicaReacao() escreve CV.reacao, controle no topo da aba Visuais (.form.reac e .note.reacnote no CSS). Sobre mostra 2.2; package.json 2.2.0.
+
+TESTES: smoke com 144 checagens (13 novas): grave encosta no kick e desce no vale (beat sintético de 90 BPM), d.bass antigo perto do talo, soco no ataque, independência de volume, ondaRef acompanha o volume, os 10 visuais de desenho ocupam e crescem (caixa das coordenadas desenhadas em cada quadro; pisos em ~2x o que a v2.1 dava com o mesmo beat), Onda Encher contra Nível real a -12 dB, os 4 degraus da Reação, nasce em Forte, conserto do estado, respira, os 4 medidores de número fora da Reação (guarda no texto do módulo), Tamanho nos 3 de forma.
+
+BANCADA FORA DO REPO (repetir assim): Chrome headless com SwiftShader via puppeteer-core. Uma página carrega audio.js e modules.js, toca o demo-beat.wav no motor quadro a quadro, desenha o visual e mede a extensão do desenho (3% a 97% dos pixels acesos), o quanto acende e a correlação disso com um grave de referência calculado fora do motor; também tira folha de contato. --disable-accelerated-2d-canvas é obrigatório: com o canvas na GPU de software cada getImageData custava 60ms.
+NÚMEROS (640x360, mediana, antes > depois; corr = correlação do tamanho com o grave):
+  PSY corr 0,46 > 0,94 (luz no vale 0,19, no kick 0,55; antes 0,52 a 0,62 sempre) · Aurora corr 0,65 > 0,96 · Lissajous largura 0,25 > 0,42 · Traço altura 0,48 > 0,46 com pico 0,54 > 0,61 e corr -0,06 > 0,71 · Fluxo corr 0,18 > 0,71 · Fita largura 0,62 > 0,76 · Enxame 0,84 > 0,94 de largura com menos branco estourado (acesos 55% > 37%) · Cordas corr 0,58 > 0,74 · Malha corr -0,04 > 0,94, linhas acesas 3,9% > 8,9% (os buracos fecharam) · Estéreo altura 0,53 > 0,66 · Osciloscópio pico 0,53 > 0,65, corr 0,19 > 0,65.
+  Barra 1440x170: Lissajous largura 0,06 > 0,27 · Fita 0,14 > 0,76 · Estéreo 0,06 > 0,18 · PSY luz 0,13 > 0,39.
+  Som 12 a 14 dB mais baixo: Estéreo 0,20 > 0,89 de altura no kick; Onda 26% > 93% da faixa.
+  Espectro, Loudness, VU e Espectrograma: idênticos.
+
+PENDENTE: o Bruno testar no Mac (npm start) com música dele e dizer se Forte é o ponto certo; afinar o repouso de cada visual de ouvido se ele pedir; ver a Reação Máxima num clipe gravado; depois do OK, npm run dist pra gerar o .dmg 2.2.0 (o app instalado ainda é o 2.1.0, gerado antes da v2.2) e commitar a rodada.
+</v22_reacao_ao_som_novembro_2026>
+
 <v21_medidores_lisos_novembro_2026>
-LEIA JUNTO COM O BLOCO DA v2. Segunda rodada do mesmo mês. PEDIDO DO BRUNO (resumo): os visuais ainda estavam pesados; ele quer clima smooth e pleasing, MiniMeters como referência forte (até copiar a disposição dos visuais), e tudo bonito, leve, liso e responsivo.
+LEIA JUNTO COM O BLOCO DA v2 (e o da v2.2 acima, que é o mais novo). Segunda rodada do mesmo mês. PEDIDO DO BRUNO (resumo): os visuais ainda estavam pesados; ele quer clima smooth e pleasing, MiniMeters como referência forte (até copiar a disposição dos visuais), e tudo bonito, leve, liso e responsivo.
 
 O QUE PESAVA (medido com test/bench.js . 720 170 2): espectro 8.711 chamadas de canvas por quadro (lineTo por pixel de dispositivo), osciloscópio 2.896 (envelope mín/máx por pixel), estéreo 1.024 rect de 1 a 3px (textura de areia), onda com cor nova por coluna e RMS por cima (fita de ruído), loudness com caixa sólida de cor e número de até 160px. Os 7 medidores somavam 12.934 chamadas por quadro; agora somam 3.162.
 

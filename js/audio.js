@@ -319,20 +319,48 @@
     this.bassFast = 0;
     this.bf = 0;        // seguidor de pico: decai devagar, mata o duplo-disparo do 808
     this.ePrev = 0;     // energia do passo anterior: exige que o som esteja SUBINDO
+    this.setupReacao();
   };
   AudioEngine.prototype.processBeat = function (from, to) {
     var mask = RING - 1, L = this.ringL, R = this.ringR;
     // dois pólos a ~160Hz: pega o corpo do 808/kick sem o resto da mixagem
     var a = Math.exp(-2 * Math.PI * 160 / this.sr);
     if (!this.bfDecay) this.bfDecay = Math.exp(-(HOP / this.sr) / 0.25);
+    // v2.2: um polo em 2,5kHz separa o médio do agudo (o grave é o mesmo lp2 do beat)
+    if (this._aMsr !== this.sr) { this._aMsr = this.sr; this._aM = Math.exp(-2 * Math.PI * 2500 / this.sr); }
+    var aM = this._aM, lpM = this.lpM, accF = this.accF, accM = this.accM, accH = this.accH, wpk = this.wPk;
     var lp1 = this.bLp1, lp2 = this.bLp2, acc = this.hopAcc, n = this.hopN;
     for (var i = from; i < to; i++) {
-      var idx = i & mask, x = (L[idx] + R[idx]) * 0.5;
+      var idx = i & mask, sl = L[idx], sr = R[idx], x = (sl + sr) * 0.5;
       lp1 += (x - lp1) * (1 - a);
       lp2 += (lp1 - lp2) * (1 - a);
+      lpM += (x - lpM) * (1 - aM);
       acc += lp2 * lp2; n++;
+      var vm = lpM - lp2, vh = x - lpM;
+      accF += x * x; accM += vm * vm; accH += vh * vh;
+      if (sl < 0) sl = -sl; if (sr < 0) sr = -sr;
+      if (sl > wpk) wpk = sl; if (sr > wpk) wpk = sr;
       if (n >= HOP) {
         var e = Math.sqrt(acc / n);
+        /* v2.2: energia de cada banda alisada em ~20ms e o MAIOR valor desde o último
+           quadro (o kick nunca cai entre dois quadros). Sem o alisamento, 128 amostras
+           são menos que um ciclo de um 808 de 50Hz (960 amostras): o valor do passo
+           dependia da fase da onda e o grave tremia 15% de quadro pra quadro. */
+        var kh = this._kh;
+        if (!kh || kh.sr !== this.sr) {
+          var hd = n / this.sr;
+          kh = this._kh = { sr: this.sr, B: 1 - Math.exp(-hd / 0.022), F: 1 - Math.exp(-hd / 0.022), M: 1 - Math.exp(-hd / 0.012), H: 1 - Math.exp(-hd / 0.008) };
+        }
+        this.sB += (acc / n - this.sB) * kh.B;
+        this.sF += (accF / n - this.sF) * kh.F;
+        this.sM += (accM / n - this.sM) * kh.M;
+        this.sH += (accH / n - this.sH) * kh.H;
+        var hB = Math.sqrt(this.sB), hF = Math.sqrt(this.sF), hM = Math.sqrt(this.sM), hH = Math.sqrt(this.sH);
+        if (hB > this.pkB) this.pkB = hB;
+        if (hF > this.pkF) this.pkF = hF;
+        if (hM > this.pkM) this.pkM = hM;
+        if (hH > this.pkH) this.pkH = hH;
+        accF = 0; accM = 0; accH = 0;
         acc = 0; n = 0;
         var avg = this.hopFill ? this.hopSum / this.hopFill : 0;
         var dtHop = HOP / this.sr;
@@ -359,6 +387,78 @@
       }
     }
     this.bLp1 = lp1; this.bLp2 = lp2; this.hopAcc = acc; this.hopN = n;
+    this.lpM = lpM; this.accF = accF; this.accM = accM; this.accH = accH; this.wPk = wpk;
+  };
+
+  /* ================= v2.2 · REAÇÃO: o grave que se ajusta ao volume =================
+     O d.bass que a arte usava sai do mapa legado de dB (piso -100, teto -30), onde
+     qualquer raia acima de -35 dBFS vira 255. Num master de rap o grave passa disso o
+     tempo todo: medido no demo-beat.wav (-12 LUFS), mediana 0,997 e p75 1,000. Entre
+     um kick e outro o sinal já estava no máximo, então o kick não tinha pra onde subir
+     e a arte não pulsava. O d.bass continua lá, igual, pra quem depende dele.
+
+     Aqui cada banda é medida em AMPLITUDE de verdade a cada 128 amostras e dividida
+     por uma referência que acompanha o volume da música: sobe em 50ms quando o som
+     passa dela e desce devagar (~2 dB/s) quando ele fica abaixo. O kick encosta no 1,
+     o vale entre kicks desce, e isso vale pro master a -8 LUFS e pro YouTube baixinho.
+       grave   (até 160Hz)   o que comanda escala, empurrão e pulso
+       soco    o ATAQUE do grave: pico no kick, zero no sustain do 808
+       energia (o som inteiro) o tamanho de base: parte cheia ocupa mais que a quebra
+       medio / agudo         deformação e brilho
+       ondaRef / ondaVivo   pico de amostra recente: autoganho de quem desenha a onda */
+  //            grave   cheio   médio   agudo
+  var REAC_SOLTA = [0.17, 0.24, 0.14, 0.09];     // queda do envelope, em segundos
+  var REAC_EXP = [1.7, 1.0, 1.3, 1.3];           // expoente: o grave ganha contraste entre kick e vale
+  var REAC_PISO = [0.010, 0.012, 0.005, 0.0025]; // amplitude RMS mínima da régua (o chiado não vira música)
+  var REAC_SOBE = 0.05, REAC_DESCE = 4.0;
+  AudioEngine.prototype.setupReacao = function () {
+    this.lpM = 0; this.accF = 0; this.accM = 0; this.accH = 0;
+    this.sB = 0; this.sF = 0; this.sM = 0; this.sH = 0;
+    this.pkB = 0; this.pkF = 0; this.pkM = 0; this.pkH = 0; this.wPk = 0;
+    this.rxEnv = new Float64Array(4);
+    this.rxRef = new Float64Array(REAC_PISO);
+    this.rxOut = new Float64Array(4);
+    this.rxLento = 0;
+    this.grave = 0; this.energia = 0; this.medio = 0; this.agudo = 0; this.soco = 0;
+    this.ondaRef = 0.05; this.ondaVivo = 0.05;
+  };
+  AudioEngine.prototype.updateReacao = function (dt) {
+    if (!this.rxEnv) this.setupReacao();
+    if (!(dt > 0)) dt = 1 / 60;
+    var kSobe = 1 - Math.exp(-dt / REAC_SOBE), kDesce = Math.exp(-dt / REAC_DESCE);
+    var envs = this.rxEnv, refs = this.rxRef, out = this.rxOut;
+    for (var b = 0; b < 4; b++) {
+      var pk = b === 0 ? this.pkB : b === 1 ? this.pkF : b === 2 ? this.pkM : this.pkH;
+      // ataque instantâneo (o pico do passo), queda no tempo da banda. É max(): com
+      // "pico > env ? pico : env x queda" o valor alternava 9% quadro sim, quadro não.
+      var env = Math.max(pk, envs[b] * Math.exp(-dt / REAC_SOLTA[b])), ref = refs[b];
+      if (env > ref) ref += (env - ref) * kSobe; else ref *= kDesce;
+      if (ref < REAC_PISO[b]) ref = REAC_PISO[b];
+      envs[b] = env; refs[b] = ref;
+      var v = env / ref; if (v > 1) v = 1;
+      out[b] = REAC_EXP[b] === 1 ? v : Math.pow(v, REAC_EXP[b]);
+    }
+    this.grave = out[0]; this.energia = out[1]; this.medio = out[2]; this.agudo = out[3];
+    /* SOCO: o quanto o grave está acima da própria média de 120ms. No ataque do kick
+       ele dispara; no sustain longo do 808 o envelope e a média se encontram e ele
+       volta pro zero. É o que deixa o pulso seco mesmo com 808 que não para de soar. */
+    var envB = envs[0];
+    this.rxLento += (envB - this.rxLento) * (1 - Math.exp(-dt / 0.12));
+    var sobe = (envB - this.rxLento) / refs[0] * 2.4;
+    if (sobe < 0) sobe = 0; else if (sobe > 1) sobe = 1;
+    this.soco = Math.max(sobe, this.soco * Math.exp(-dt / 0.11));
+    /* pico de amostra, duas réguas, piso em -32 dBFS (o chiado não vira onda):
+       ondaRef desce em ~3s (medidores: a quebra continua parecendo quebra) e
+       ondaVivo desce em 0,8s (arte: numa quebra sem grave a figura volta a encher
+       em menos de 1s, em vez de virar um pontinho no meio do painel). */
+    var wp = this.wPk, kA = 1 - Math.exp(-dt / 0.02);
+    if (wp > this.ondaRef) this.ondaRef += (wp - this.ondaRef) * kA;
+    else this.ondaRef *= Math.exp(-dt / 3.0);
+    if (this.ondaRef < 0.025) this.ondaRef = 0.025;
+    if (wp > this.ondaVivo) this.ondaVivo += (wp - this.ondaVivo) * kA;
+    else this.ondaVivo *= Math.exp(-dt / 0.8);
+    if (this.ondaVivo < 0.025) this.ondaVivo = 0.025;
+    this.pkB = 0; this.pkF = 0; this.pkM = 0; this.pkH = 0; this.wPk = 0;
   };
 
   /* ================= o grafo (só pra tocar, monitorar e GRAVAR) ================= */
@@ -874,6 +974,7 @@
     this.beat = this.beatHit;
     this.beatHit = false;
     this.beatPulse = Math.max(0, this.beatPulse - dt * 3.2);
+    this.updateReacao(dt);
     this.lufsAvgVal = this.lufsI;
 
     // 3) recortes de tempo (o mais NOVO no fim, como o AnalyserNode entregava)

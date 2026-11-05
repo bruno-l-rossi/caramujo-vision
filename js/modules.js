@@ -453,7 +453,7 @@
   CV.fmtHz = function (f) { return f >= 1000 ? (f / 1000).toFixed(f >= 10000 ? 0 : 1) + 'kHz' : Math.round(f) + 'Hz'; };
 
   var COMMON = [
-    { k: 'sens', label: 'Sensibilidade', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
+    { k: 'sens', label: 'Reação', type: 'range', min: 0.2, max: 2.5, step: 0.05, def: 1, fmt: 'pct' },
     { k: 'speed', label: 'Velocidade', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
     { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
   ];
@@ -623,19 +623,92 @@
     m.st.pt = 0;
   };
 
+  /* ================= v2.2 · REAÇÃO AO SOM =================
+     Pedido do Bruno: a música mexendo MAIS nos visuais, principalmente o grave, e cada
+     visual crescendo até ocupar boa parte do painel. A causa do visual parado era o
+     sinal, não o desenho: o d.bass vivia no talo (mediana 0,997 no beat demo), então o
+     kick não tinha pra onde subir. O motor agora entrega sinais que se ajustam ao
+     volume da música (audio.js, updateReacao): grave, soco, energia, medio, agudo e o
+     ondaRef pro autoganho da forma de onda.
+     Quanto o som mexe em cada visual = Reação geral (Ajustes) x Reação do visual. */
+  CV.reacao = 1;          // o app escreve aqui: Leve 0,45 · Média 0,7 · Forte 1 · Máxima 1,45
+  CV.REACOES = [['leve', 'Leve', 0.45], ['media', 'Média', 0.7], ['forte', 'Forte', 1], ['maxima', 'Máxima', 1.45]];
+  CV.rx = function (m) {
+    var s = m && m.s && m.s.sens !== undefined ? +m.s.sens : 1;
+    return (CV.reacao === undefined ? 1 : CV.reacao) * (s >= 0 ? s : 1);
+  };
+  /* os sinais novos. Um motor sem eles (objeto de teste, versão antiga) cai numa
+     reserva tirada dos sinais velhos, sem quebrar nada. */
+  var SOM_RES = { grave: 0, soco: 0, energia: 0, medio: 0, agudo: 0, ondaRef: 0.5, ondaVivo: 0.5 };
+  CV.som = function (d) {
+    if (!d) { SOM_RES.grave = SOM_RES.soco = SOM_RES.energia = SOM_RES.medio = SOM_RES.agudo = 0; return SOM_RES; }
+    if (d.grave !== undefined) return d;
+    SOM_RES.grave = Math.min(1, d.bass || 0); SOM_RES.soco = d.beatPulse || 0;
+    SOM_RES.energia = Math.min(1, (d.level || 0) * 4); SOM_RES.medio = d.mid || 0; SOM_RES.agudo = d.high || 0;
+    SOM_RES.ondaRef = SOM_RES.ondaVivo = 0.5;
+    return SOM_RES;
+  };
+  /* o tamanho que respira: 'repouso' é a fração do painel sem batida; com o sinal em 1
+     (o kick) chega no painel inteiro. Reação abaixo de 1 segura perto do repouso;
+     acima de 1 encosta na borda mais cedo e fica mais tempo lá. */
+  CV.respira = function (m, sinal, repouso) {
+    var v = sinal * CV.rx(m);
+    if (v > 1) v = 1; else if (v < 0) v = 0;
+    return repouso + (1 - repouso) * v;
+  };
+  // envelope próprio do painel, em segundos: sobe em 'sobe', desce em 'desce'
+  CV.env = function (m, key, alvo, dt, sobe, desce) {
+    var st = m.st, v = st[key];
+    if (v === undefined) v = alvo;
+    var tau = alvo > v ? sobe : desce;
+    v += (alvo - v) * (tau > 0 ? 1 - Math.exp(-Math.min(0.1, dt) / tau) : 1);
+    st[key] = v;
+    return v;
+  };
+  /* AUTOGANHO DA FORMA DE ONDA: o pico recente da música vira 'alvo' (fração da
+     metade do painel). Lissajous, Traço e Camadas desenhavam a amostra crua: com a
+     música a -12 LUFS a figura do Lissajous ocupava 25% da largura do painel.
+     A arte usa a régua viva (desce em 0,8s): na quebra sem grave ela volta a encher. */
+  CV.ganhoOnda = function (d, alvo, teto) {
+    var ref = d && d.ondaVivo > 0 ? d.ondaVivo : (d && d.ondaRef > 0 ? d.ondaRef : 0.5);
+    var g = (alvo === undefined ? 0.92 : alvo) / ref;
+    return g > (teto || 12) ? (teto || 12) : g;
+  };
+  /* curva que abre o miolo: amostra pequena cresce mais que a grande (|v|^0,65).
+     A figura de fase vive concentrada perto do zero; sem isso ela vira um caroço
+     aceso no meio e o resto do painel fica vazio. */
+  CV.abreMiolo = function (v) { return v < 0 ? -Math.pow(-v, 0.65) : Math.pow(v, 0.65); };
+  /* joelho macio: até 75% do limite passa reto, daí em diante encosta devagar no
+     limite (tanh). Deixa o visual chegar na borda no kick sem ser cortado reto. */
+  CV.joelho = function (v, lim) {
+    var a = v < 0 ? -v : v, k = lim * 0.75;
+    if (a <= k) return v;
+    var o = k + (lim - k) * Math.tanh((a - k) / (lim - k));
+    return v < 0 ? -o : o;
+  };
+  /* quanto os medidores de forma (onda, osciloscópio, estéreo) enchem o painel no
+     modo Encher: o pico recente da música vai a 95% da faixa na Reação Forte */
+  CV.alvoEncher = function () {
+    var r = CV.reacao === undefined ? 1 : CV.reacao;
+    return Math.min(1.15, 0.5 + 0.45 * r);
+  };
+
   /* velocidade do relógio interno, suavizada. O beat sobe de 0 a 1 num salto seco:
-     usado cru, o visual "pula". Aqui ele entra com inércia, então o movimento é contínuo. */
+     usado cru, o visual "pula". Aqui ele entra com inércia, então o movimento é contínuo.
+     v2.2: o empurrão é o soco do grave (contínuo, do tamanho do kick) e cresce com a Reação. */
   CV.rate = function (m, d, dt, base, gateAmt, beatAmt) {
-    var gate = CV.gate(m, d, dt);
-    var tgt = base + gate * gateAmt + (d ? d.beatPulse * beatAmt : 0);
+    var gate = CV.gate(m, d, dt), sm = CV.som(d);
+    var pulso = d ? Math.max(d.beatPulse || 0, sm.soco) : 0;
+    var tgt = base + gate * gateAmt + pulso * beatAmt * Math.min(1.6, CV.rx(m));
     if (m.st.rt === undefined) m.st.rt = tgt;
     m.st.rt += (tgt - m.st.rt) * Math.min(1, dt * 7);
     return m.st.rt;
   };
 
-  /* portão de energia: o áudio é quem molda; silêncio = quieto e apagado */
+  /* portão de energia: o áudio é quem molda; silêncio = quieto e apagado.
+     v2.2: a Reação NÃO entra aqui. Ela diz quanto o som mexe, não se tem som. */
   CV.gate = function (m, d, dt) {
-    var tg = d ? Math.min(1, (d.level * 5 + d.bass * 0.8) * m.s.sens) : 0;
+    var tg = d ? Math.min(1, (d.level * 5 + d.bass * 0.8)) : 0;
     if (m.st.gate === undefined) m.st.gate = 0;
     m.st.gate += (tg - m.st.gate) * Math.min(1, dt * (tg > m.st.gate ? 12 : 2.5));
     return m.st.gate;
@@ -662,10 +735,14 @@
     gl.uniform2f(m.st.u.u_res, m.canvas.width, m.canvas.height);
     gl.uniform2f(m.st.u.u_mouse, mx, my);
     gl.uniform1f(m.st.u.u_t, m.st.pt);
-    gl.uniform1f(m.st.u.u_bass, d ? Math.min(1.4, d.bass * m.s.sens * 1.5) : 0);
-    gl.uniform1f(m.st.u.u_mid, d ? d.mid : 0);
-    gl.uniform1f(m.st.u.u_high, d ? Math.min(1, d.high * m.s.sens * 2.2) : 0);
-    gl.uniform1f(m.st.u.u_beat, d ? d.beatPulse : 0);
+    /* v2.2: o shader recebe o grave que se ajusta ao volume. O d.bass antigo chegava
+       ali no talo o tempo todo (1,4 cravado), e o líquido não sabia quando era kick. */
+    var sm = CV.som(d), ax = CV.rx(m);
+    var gS = CV.env(m, 'glG', sm.grave, dt, 0.012, 0.09);
+    gl.uniform1f(m.st.u.u_bass, d ? Math.min(1.4, (0.26 + 1.0 * gS + 0.35 * sm.soco) * ax) : 0);
+    gl.uniform1f(m.st.u.u_mid, d ? Math.min(1, sm.medio * ax) : 0);
+    gl.uniform1f(m.st.u.u_high, d ? Math.min(1, sm.agudo * ax * 1.1) : 0);
+    gl.uniform1f(m.st.u.u_beat, d ? Math.min(1, Math.max(d.beatPulse * 0.6, sm.soco) * Math.min(1.2, ax)) : 0);
     gl.uniform1f(m.st.u.u_hue, hue);
     gl.uniform1f(m.st.u.u_sat, ((th === 'mono' || th === 'preto' || th === 'carvao' || th === 'papel') && m.s.colorMode !== 'custom') ? 0 : 1);
     gl.uniform1f(m.st.u.u_lock, m.s.colorMode === 'custom' ? 1 : 0);
@@ -954,10 +1031,11 @@
   var ONDA_BANDA = { lo: [253, 86, 72], mid: [104, 211, 116], hi: [77, 169, 252] };
   CV.register('wavescroll', {
     name: 'Onda', group: 'Estúdio', buffered: true, desc: 'A forma de onda passando, em três bandas, um canal por faixa',
-    defaults: { ch1: 'l', ch2: 'r', cor: 'auto', speed: 1, sens: 1, cmap: 'auto' },
+    defaults: { ch1: 'l', ch2: 'r', cor: 'auto', speed: 1, sens: 1, tamanho: 'encher', cmap: 'auto' },
     schema: [
       { k: 'ch1', label: 'Canal 1', type: 'seg', opts: [['l', 'Esq'], ['r', 'Dir'], ['m', 'Mid'], ['s', 'Side']], def: 'l' },
       { k: 'ch2', label: 'Canal 2', type: 'seg', opts: [['off', 'Off'], ['l', 'Esq'], ['r', 'Dir'], ['m', 'Mid'], ['s', 'Side']], def: 'r' },
+      { k: 'tamanho', label: 'Tamanho', type: 'seg', opts: [['encher', 'Encher'], ['real', 'Nível real']], def: 'encher' },
       { k: 'cor', label: 'Cor', type: 'seg', opts: [['auto', 'Do tema'], ['banda', 'Bandas'], ['fixa', 'Uma cor'], ['mapa', 'Mapa']], def: 'auto' },
       { k: 'speed', label: 'Rolagem', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
       { k: 'cmap', label: 'Mapa', type: 'select', opts: CV.CMAP_LIST, def: 'auto', when: ['cor', 'mapa'] }
@@ -988,7 +1066,9 @@
           var base = corMedidor(m, 0);
           cLo = CV.rgba(base, 0.3); cMid = CV.rgba(base, 0.58); cHi = CV.rgba(base, 0.95);
         } else if (modo === 'fixa') cUma = CV.rgba(corMedidor(m, 0), 0.9);
-        var g = s.sens, porCol = fresh / dx;
+        /* v2.2 ENCHER: o pico recente da música vai a 95% da faixa (Reação Forte), em
+           qualquer volume de entrada. Nível real = o ganho fixo de antes, pra ler folga. */
+        var g = s.tamanho === 'real' ? s.sens : Math.min(10, CV.alvoEncher() / Math.max(0.02, CV.som(d).ondaRef)), porCol = fresh / dx;
         for (var li = 0; li < lanes; li++) {
           var ch = chans[li], fs = st.f[li] || (st.f[li] = { lo: 0, hi: 0 });
           var mid = laneH * (li + 0.5), amp = laneH * 0.46;
@@ -1108,9 +1188,10 @@
      JavaScript. O círculo no mesmo caminho sai por um quarto disso. */
   CV.register('gonio', {
     name: 'Estéreo', group: 'Estúdio', desc: 'Largura e balanço da mixagem',
-    defaults: { estilo: 'cupula', cor: 'auto', ponto: 0, sens: 1, trail: 0.62, guias: 0, regua: 0, cmap: 'auto' },
+    defaults: { estilo: 'cupula', cor: 'auto', ponto: 0, sens: 1, tamanho: 'encher', trail: 0.62, guias: 0, regua: 0, cmap: 'auto' },
     schema: [
       { k: 'estilo', label: 'Estilo', type: 'seg', opts: [['cupula', 'Cúpula'], ['lissa', 'Lissajous']], def: 'cupula' },
+      { k: 'tamanho', label: 'Tamanho', type: 'seg', opts: [['encher', 'Encher'], ['real', 'Nível real']], def: 'encher' },
       { k: 'cor', label: 'Cor', type: 'seg', opts: [['auto', 'Do tema'], ['mapa', 'RGB'], ['lr', 'L/R'], ['fixa', 'Fixa']], def: 'auto' },
       { k: 'ponto', label: 'Ponto', type: 'range', min: 0, max: 3, step: 0.1, def: 0, fmt: 'int' }
     ],
@@ -1120,18 +1201,29 @@
       CV.fade(m, c, s.trail);
       if (!d || !d.timeL) return;
       var L = d.timeL, R = d.timeR, n = Math.min(L.length, R.length), i;
-      var cupula = s.estilo === 'cupula';
+      var cupula = s.estilo === 'cupula', encher = s.tamanho !== 'real';
       var padB = Math.max(4, h * 0.04);
       var cx = w / 2, cy = cupula ? h - padB : h / 2;
       var RR = cupula ? Math.min(w * 0.47, h - padB - 4) : Math.min(w, h) * 0.44;
+      /* v2.2 ENCHER: a cúpula vira meia ELIPSE do formato do painel (até 2,8x mais larga
+         que alta), a nuvem entra com autoganho e o ponto engorda no grave. Numa barra
+         de 1440x170 a cúpula redonda cabia em 22% da largura e a nuvem em 6%. */
+      var RX = RR, RY = RR, G = 0.72 * s.sens, sm = CV.som(d);
+      if (encher) {
+        if (cupula) { RY = Math.min(h - padB - 4, w * 0.47 * 1.5); RX = Math.min(w * 0.47, RY * 2.8); }
+        else { RY = Math.min(h * 0.44, w * 0.44 * 1.4); RX = Math.min(w * 0.44, RY * 2.4); }
+        G = 1.3 * CV.alvoEncher() / (2 * Math.max(0.05, sm.ondaRef));
+      }
+      var gS = CV.env(m, 'goG', sm.grave, dt, 0.01, 0.12);
       var sz = s.ponto > 0.05 ? s.ponto : Math.max(0.9, Math.min(1.8, Math.sqrt(w * h) / 150));
+      if (encher) sz *= 1 + 0.5 * Math.min(1, gS * CV.rx(m));
       // painel grande ganha mais pontos (até as 1024 amostras do quadro), pequeno fica leve
       var step = Math.max(1, Math.round(n / Math.min(1024, 300 + Math.sqrt(w * h) * 0.9)));
       if (s.guias >= 0.5) {
         c.strokeStyle = CV.gridInk(m, 0.06); c.lineWidth = 1;
         c.beginPath();
-        if (cupula) { c.arc(cx, cy, RR, Math.PI, 0); c.moveTo(cx, cy); c.lineTo(cx, cy - RR); }
-        else { c.arc(cx, cy, RR, 0, Math.PI * 2); c.moveTo(cx - RR, cy); c.lineTo(cx + RR, cy); }
+        if (cupula) { c.ellipse(cx, cy, RX, RY, 0, Math.PI, 0); c.moveTo(cx, cy); c.lineTo(cx, cy - RY); }
+        else { c.ellipse(cx, cy, RX, RY, 0, 0, Math.PI * 2); c.moveTo(cx - RX, cy); c.lineTo(cx + RX, cy); }
         c.stroke();
       }
       var bB = Math.min(1, d.bass * 1.5), bM = Math.min(1, d.mid * 2.2), bH = Math.min(1, d.high * 2.6);
@@ -1149,12 +1241,13 @@
           if (sum < 1e-5) continue;
           var pan = (Math.abs(b) - Math.abs(a)) / sum;
           pan = pan < 0 ? -Math.pow(-pan, 0.45) : Math.pow(pan, 0.45);
-          var ang = pan * Math.PI / 2, rr = Math.min(1, sum * 0.72 * s.sens) * RR;
-          px = cx + Math.sin(ang) * rr; py = cy - Math.cos(ang) * rr;
-          cv = s.cor === 'lr' ? (pan + 1) * 0.5 : Math.min(1, rr / RR * 1.15);
+          // no Encher a ponta encosta macia na borda (cortar em 1 empilhava uma faixa branca no arco)
+          var ang = pan * Math.PI / 2, rn = encher ? CV.joelho(sum * G, 1) : Math.min(1, sum * G);
+          px = cx + Math.sin(ang) * rn * RX; py = cy - Math.cos(ang) * rn * RY;
+          cv = s.cor === 'lr' ? (pan + 1) * 0.5 : Math.min(1, rn * 1.15);
         } else {
-          var xx = (a - b) * 0.707, yy = -(a + b) * 0.707;
-          px = cx + xx * RR * s.sens; py = cy + yy * RR * s.sens;
+          var xx = (a - b) * 0.707, yy = -(a + b) * 0.707, gl = encher ? G * 1.39 : s.sens;
+          px = cx + (encher ? CV.joelho(xx * gl, 1) : xx * gl) * RX; py = cy + (encher ? CV.joelho(yy * gl, 1) : yy * gl) * RY;
           cv = Math.min(1, Math.sqrt(xx * xx + yy * yy) * 1.4);
         }
         var ai = (Math.min(0.999, 0.25 + (1 - i / n) * 0.75) * AN) | 0;
@@ -1187,10 +1280,11 @@
      quadro e uma borda serrilhada. A trava no tom (YIN) é a mesma. */
   CV.register('scope', {
     name: 'Osciloscópio', group: 'Estúdio', desc: 'A onda parada no tom, com a nota',
-    defaults: { modo: 'pitch', ciclo: 'multi', sens: 1, cheio: 1, trail: 0, cmap: 'auto' },
+    defaults: { modo: 'pitch', ciclo: 'multi', sens: 1, tamanho: 'encher', cheio: 1, trail: 0, cmap: 'auto' },
     schema: [
       { k: 'modo', label: 'Trava', type: 'seg', opts: [['pitch', 'Tom'], ['free', 'Livre']], def: 'pitch' },
       { k: 'ciclo', label: 'Ciclo', type: 'seg', opts: [['multi', 'Múltiplo'], ['single', 'Único']], def: 'multi' },
+      { k: 'tamanho', label: 'Tamanho', type: 'seg', opts: [['encher', 'Encher'], ['real', 'Nível real']], def: 'encher' },
       { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
     ],
     init: function (m) { m.st.per = 512; },
@@ -1233,17 +1327,33 @@
       var cycles = s.ciclo === 'single' ? 1 : 3;
       var span = s.modo === 'pitch' ? Math.max(64, Math.min(n - 2, Math.round(per * cycles))) : Math.floor(n / 2);
       var start = n - span - 1; if (start < 0) start = 0;
-      var mid = h / 2, amp = h * 0.44 * s.sens;
+      var mid = h / 2, amp = h * 0.44 * s.sens, encher = s.tamanho !== 'real';
       var pts = Math.max(32, Math.min(700, Math.round(w / 2), span));
       if (!st.X || st.X.length !== pts) { st.X = new Float32Array(pts); st.Y = new Float32Array(pts); }
-      var X = st.X, Y = st.Y;
+      var X = st.X, Y = st.Y, pkV = 0;
       for (i = 0; i < pts; i++) {
         var a0 = start + ((i * span / pts) | 0), a1 = start + (((i + 1) * span / pts) | 0);
         if (a1 <= a0) a1 = a0 + 1;
         var sm = 0, cnt = 0;
         for (var q = a0; q < a1 && q < n; q++) { sm += td[q]; cnt++; }
         X[i] = i / (pts - 1) * w;
-        Y[i] = mid - Math.max(-1.05, Math.min(1.05, cnt ? sm / cnt : 0)) * amp;
+        Y[i] = cnt ? sm / cnt : 0;
+        if (Y[i] > pkV) pkV = Y[i]; else if (-Y[i] > pkV) pkV = -Y[i];
+      }
+      /* v2.2 ENCHER: o osciloscópio mede o pico da PRÓPRIA curva (sobe em 30ms, desce em
+         1,5s) e ajusta a altura pra ele bater em 95% da metade do painel. A média de
+         cada pedaço come o pico do agudo, então o pico do som não serviria de régua. */
+      var gO = 1;
+      if (encher) {
+        if (st.opk === undefined) st.opk = pkV;
+        st.opk = pkV > st.opk ? st.opk + (pkV - st.opk) * (1 - Math.exp(-dt / 0.03)) : st.opk * Math.exp(-dt / 1.5);
+        if (st.opk < 0.012) st.opk = 0.012;
+        gO = Math.min(12, CV.alvoEncher() / st.opk);
+        amp = h * 0.47;
+      }
+      for (i = 0; i < pts; i++) {
+        var yv = Y[i] * gO;
+        Y[i] = mid - (encher ? CV.joelho(yv, 1.02) : Math.max(-1.05, Math.min(1.05, yv))) * amp;
       }
       var col = corMedidor(m, 0, 0.88), colF = CV.corRGB(m, 1);
       c.lineJoin = 'round';
@@ -1507,11 +1617,15 @@
     '  float f = fbm(p + u_a * r);',
     '  float hue = u_hue + f*1.2 + u_bass*0.25 + mpush*0.4;',
     '  vec3 col = pal(hue);',
-    '  float lum = 0.05 + f*f*(0.75 + u_bass*1.3) + u_bass*0.7 + mpush*0.5;',
+    '  float lum = 0.06 + f*f*(0.85 + u_bass*0.9) + u_bass*0.32 + mpush*0.5;',
     '  col *= lum;',
-    '  col += u_high * 0.32 * pow(noise(p*40.0 + t*8.0), 6.0);',
-    '  col += u_beat * 0.15;',
-    '  float vig = 1.0 - dot(uv,uv)*0.68;',
+    '  col += u_high * 0.18 * pow(noise(p*40.0 + t*8.0), 6.0);',
+    '  col += u_beat * 0.12;',
+    /* vinheta pela PROPORÇÃO do painel (era pelo lado menor: numa barra de 1440x170
+       tudo além de 1,2 altura do centro ficava preto e o PSY acendia 13% da faixa).
+       No kick ela abre e o líquido toma o painel inteiro. */
+    '  vec2 vv = (gl_FragCoord.xy / u_res - 0.5) * 2.0;',
+    '  float vig = 1.0 - dot(vv,vv) * 0.17 * (1.0 - 0.55*min(u_bass, 1.0));',
     '  gl_FragColor = vec4(col * vig * (0.02 + 0.98*u_gate), 1.0);',
     '}'
   ].join('\n');
@@ -1520,7 +1634,7 @@
     name: 'PSY', group: 'Arte', webgl: true, desc: 'Líquido psicodélico que derrete no grave',
     defaults: defs({ warp: 3, zoom: 1.6, mousef: 1 }),
     schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
+      { k: 'sens', label: 'Reação', min: 0.2, max: 2.5, step: 0.05, def: 1, fmt: 'pct' },
       { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
       { k: 'warp', label: 'Derretimento', min: 0.5, max: 8, step: 0.1, def: 3 },
       { k: 'zoom', label: 'Zoom', min: 0.5, max: 4, step: 0.05, def: 1.6 },
@@ -1528,9 +1642,15 @@
     ],
     init: function (m) { CV.glSetup(m, PSY_FRAG); },
     draw: function (m, d, dt, t) {
-      // u_a carrega derretimento * reação-mouse; o grave aumenta o derretimento
-      var warp = m.s.warp * (0.5 + (d ? d.bass * m.s.sens * 1.3 : 0)) * (m.mouse && m.mouse.over ? (1 + m.s.mousef * 0.4) : 1);
-      if (!CV.glFrame(m, d, dt, warp, m.s.zoom)) {
+      /* u_a carrega derretimento x mouse. v2.2: o grave derrete (de metade do
+         derretimento no vale até quase o dobro no kick) e APROXIMA: o zoom cai até
+         ~40% no kick, então a mancha cresce na batida e volta no vale. */
+      var sm = CV.som(d), ax = CV.rx(m);
+      var gS = CV.env(m, 'psyG', sm.grave, dt, 0.015, 0.12);
+      var mouse = m.mouse && m.mouse.over ? (1 + m.s.mousef * 0.4) : 1;
+      var warp = m.s.warp * (0.5 + (d ? (0.75 * gS + 0.45 * sm.soco) * ax : 0)) * mouse;
+      var zoom = m.s.zoom / (1 + 0.42 * Math.min(1.5, (0.55 * gS + 0.6 * sm.soco) * ax));
+      if (!CV.glFrame(m, d, dt, warp, zoom)) {
         var c = m.canvas.getContext('2d'); if (!c) return;
         c.fillStyle = CV.bgOf(m); c.fillRect(0, 0, m.w, m.h);
       }
@@ -1547,56 +1667,76 @@
       { k: 'modo', label: 'Harmônico', min: 0, max: 1, step: 1, def: 0 }
     ]),
     init: function (m) { m.st.rot = 0; },
+    /* v2.2: a figura enche o painel e respira no grave.
+       Antes: amostra crua x 42% do lado MENOR. Com a música a -12 LUFS a figura ocupava
+       25% da largura num painel 640x360 e 6% numa barra de 1440x170.
+       Agora: autoganho (o pico recente da música vai a 60% do raio, antes de abrir o
+       miolo), um raio pra cada eixo (a barra larga ganha figura larga), o kick empurra
+       de 72% a 100% e um joelho macio segura a ponta antes da borda. */
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
       CV.fade(m, c, s.trail);
       if (!d) return;
-      var gate = CV.gate(m, d, dt);
-      var rotSpeed = 0.02 + gate * 0.35;
+      var gate = CV.gate(m, d, dt), sm = CV.som(d), ax = CV.rx(m);
+      var gS = CV.env(m, 'lsG', sm.grave, dt, 0.01, 0.1);
+      var rotSpeed = 0.02 + gate * 0.35 + 0.9 * sm.soco * Math.min(1.5, ax);
       if (m.mouse && m.mouse.over) rotSpeed += (m.mouse.x / w - 0.5) * 1.2;
       m.st.rot += dt * rotSpeed * s.speed;
-      var cx = w / 2, cy = h / 2, sc = Math.min(w, h) * 0.42;
-      if (m.mouse && m.mouse.over) sc *= 1 + (0.5 - m.mouse.y / h) * 0.5;
+      // um raio por eixo, com teto de 5:1: numa barra muito larga a figura vira faixa, não risco
+      var cx = w / 2, cy = h / 2, sy = Math.min(h * 0.47, w * 0.47 * 5), sx = Math.min(w * 0.47, sy * 5);
+      var pump = CV.respira(m, 0.55 * gS + 0.7 * sm.soco, 0.72);
+      if (m.mouse && m.mouse.over) pump *= 1 + (0.5 - m.mouse.y / h) * 0.4;
+      var cr = Math.cos(m.st.rot), sr = Math.sin(m.st.rot);
       var col = CV.pal(m, 0, t);
-      c.save();
-      c.translate(cx, cy); c.rotate(m.st.rot);
       CV.blend(m, c);
+      /* abre o miolo (raio^0,65: a nuvem de fase sai do caroço e ocupa o painel) e
+         segura a ponta num joelho macio: passou de 0,86, encosta devagar na borda */
+      var abre = s.modo < 0.5;
+      var pX = function (x, y) {
+        var r = Math.sqrt(x * x + y * y);
+        if (abre && r > 1e-6) { var e = Math.pow(r, -0.35); x *= e; y *= e; r *= e; }
+        var xr = x * cr - y * sr, yr = x * sr + y * cr;
+        if (r > 0.86) { var k = (0.86 + 0.14 * Math.tanh((r - 0.86) / 0.14)) / r; xr *= k; yr *= k; }
+        _lp[0] = cx + xr * sx; _lp[1] = cy + yr * sy;
+        return _lp;
+      };
+      var P;
       if (s.modo >= 0.5) {
-        var a = 2 + Math.round(d.bass * s.sens * 5), b2 = 3 + Math.round(d.high * s.sens * 6);
-        var ph = t * 0.5 * s.speed, amp = sc * (0.12 + d.level * 3 * s.sens) * (0.2 + 0.8 * gate);
+        var gH = CV.env(m, 'lsH', gS, dt, 0.25, 0.6), hH = CV.env(m, 'lsA', sm.agudo, dt, 0.25, 0.6);
+        var a = 2 + Math.round(Math.min(1, gH * ax) * 4), b2 = 3 + Math.round(Math.min(1, hH * ax) * 5);
+        var ph = t * 0.5 * s.speed, amp = 0.9 * pump * (0.2 + 0.8 * gate);
         c.strokeStyle = CV.hsla(col, 0.32 * (0.1 + 0.9 * gate));
         c.lineWidth = CV.lw(m, 0.9);
         c.beginPath();
         var STEPS = CV.det(m, 700, 1800);
         for (var i2 = 0; i2 <= STEPS; i2++) {
           var u = i2 / STEPS * 6.283 * 2;
-          var x2 = Math.sin(a * u + ph) * amp * (0.8 + 0.2 * Math.sin(u * 3 + t));
-          var y2 = Math.sin(b2 * u) * amp * (0.8 + 0.2 * Math.cos(u * 2 - t));
-          i2 === 0 ? c.moveTo(x2, y2) : c.lineTo(x2, y2);
+          P = pX(Math.sin(a * u + ph) * amp * (0.8 + 0.2 * Math.sin(u * 3 + t)), Math.sin(b2 * u) * amp * (0.8 + 0.2 * Math.cos(u * 2 - t)));
+          i2 === 0 ? c.moveTo(P[0], P[1]) : c.lineTo(P[0], P[1]);
         }
         c.stroke();
       } else {
         var L = d.timeL, R = d.timeR, n = Math.min(L.length, R.length);
+        var g = CV.ganhoOnda(d, 0.6) * Math.pow(pump, 1.54);   // pump^1,54 compensa o ^0,65 do miolo
         c.lineWidth = CV.lw(m, 0.7);
         // a cada 4 amostras a figura fica facetada em painel grande: lá o passo cai pra 2
         var passo = w > 640 ? 2 : 4;
         for (var layer = 0; layer < 3; layer++) {
-          var off = layer * 90;
+          var off = layer * 90, gl2 = g * (1 + layer * 0.12);
           var cl = CV.pal(m, layer, t);
           c.strokeStyle = CV.hsla(cl, 0.24 * (0.1 + 0.9 * gate));
           c.beginPath();
           for (var j = 0; j + off < n; j += passo) {
-            var x3 = L[j] * sc * s.sens * (1 + layer * 0.15);
-            var y3 = R[j + off] * sc * s.sens * (1 + layer * 0.15);
-            j === 0 ? c.moveTo(x3, y3) : c.lineTo(x3, y3);
+            P = pX(L[j] * gl2, R[j + off] * gl2);
+            j === 0 ? c.moveTo(P[0], P[1]) : c.lineTo(P[0], P[1]);
           }
           c.stroke();
         }
       }
-      c.restore();
       CV.blend(m, c, false);
     }
   });
+  var _lp = [0, 0];
 
   /* ================= TRAÇO (linha viva) ================= */
   CV.register('trace', {
@@ -1611,32 +1751,42 @@
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
       CV.fade(m, c, s.trail);
       if (!d) return;
-      var gate = CV.gate(m, d, dt);
+      var gate = CV.gate(m, d, dt), sm = CV.som(d), ax = CV.rx(m);
       var N = CV.det(m, 140, 420), i;
       if (!m.st.ys || m.st.ys.length !== N) { m.st.ys = new Float32Array(N); m.st.pt = m.st.pt || 0; }
-      m.st.pt += dt * s.speed * (0.05 + gate * 1.4);
+      m.st.pt += dt * s.speed * (0.05 + gate * 1.4 + 0.8 * sm.soco * Math.min(1.5, ax));
       var pt2 = m.st.pt, ys = m.st.ys;
       var td = d.time, step = Math.floor(td.length / N);
       var k = Math.min(1, dt * (4 + s.tensao * 8));
+      /* v2.2: a onda entra com autoganho (o pico recente vai a 40% da altura), a
+         ondulação lenta cresce com o grave e o kick estufa a linha inteira (de 85% a
+         100%). Era amostra crua x 34%: a linha ocupava a metade do meio do painel. */
+      var gS = CV.env(m, 'trG', sm.grave, dt, 0.012, 0.12);
+      var gW = CV.ganhoOnda(d, 1, 10);
+      var pump = CV.respira(m, 0.55 * gS + 0.6 * sm.soco, 0.85);
+      var ond = h * 0.22 * (0.9 + Math.min(1.3, (0.55 * sm.medio + 0.9 * gS) * ax));
       for (i = 0; i < N; i++) {
         var env = Math.sin(i / (N - 1) * Math.PI); // pontas presas nas bordas
-        var wave = td[i * step] * h * 0.34 * s.sens;
-        var drift = Math.sin(i * 0.05 + pt2 * 2.0) * Math.cos(i * 0.021 - pt2 * 1.3) * h * 0.22 * (0.3 + d.mid * 1.6);
-        ys[i] += ((wave + drift) * env * gate - ys[i]) * k;
+        var wave = CV.abreMiolo(td[i * step] * gW) * h * 0.4;
+        var drift = Math.sin(i * 0.05 + pt2 * 2.0) * Math.cos(i * 0.021 - pt2 * 1.3) * ond;
+        ys[i] += ((wave + drift) * env * gate * pump - ys[i]) * k;
       }
       // tensão: a linha se alisa como corda
       for (var pass = 0; pass < 2; pass++)
         for (i = 1; i < N - 1; i++) ys[i] += ((ys[i - 1] + ys[i + 1]) * 0.5 - ys[i]) * 0.5;
+      // joelho macio só no desenho: a corda encosta na borda sem sair do painel
+      var yd = m.st.yd && m.st.yd.length === N ? m.st.yd : (m.st.yd = new Float32Array(N));
+      for (i = 0; i < N; i++) yd[i] = h / 2 + CV.joelho(ys[i], h * 0.47);
       var col = CV.isMono(m) ? [0, 0, 96] : CV.pal(m, 0, t);
       c.strokeStyle = CV.hsla(col, 0.3 + gate * 0.6);
       c.lineWidth = CV.lw(m, 1.4);
       c.beginPath();
-      c.moveTo(0, h / 2 + ys[0]);
+      c.moveTo(0, yd[0]);
       for (i = 1; i < N - 1; i++) {
         var x0 = i / (N - 1) * w, x1 = (i + 1) / (N - 1) * w;
-        c.quadraticCurveTo(x0, h / 2 + ys[i], (x0 + x1) / 2, h / 2 + (ys[i] + ys[i + 1]) / 2);
+        c.quadraticCurveTo(x0, yd[i], (x0 + x1) / 2, (yd[i] + yd[i + 1]) / 2);
       }
-      c.lineTo(w, h / 2 + ys[N - 1]);
+      c.lineTo(w, yd[N - 1]);
       c.stroke();
     }
   });
@@ -1654,15 +1804,23 @@
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
       CV.fade(m, c, s.trail);
       if (!d) return;
-      var gate = CV.gate(m, d, dt);
+      var gate = CV.gate(m, d, dt), sm = CV.som(d), ax = CV.rx(m);
+      var gS = CV.env(m, 'flG', sm.grave, dt, 0.01, 0.12);
       if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * s.speed * (0.03 + gate * 0.9 + d.beatPulse * 0.5);
+      m.st.pt += dt * s.speed * (0.03 + gate * 0.9 + sm.soco * 0.6 * Math.min(1.5, ax));
       var pt2 = m.st.pt;
       var ps = m.st.ps, want = Math.round(CV.det(m, 520, 1600) * s.dens);
       while (ps.length < want) ps.push({ x: Math.random() * w, y: Math.random() * h, life: Math.random(), b: Math.random() });
       if (ps.length > want) ps.length = want;
-      var energy = Math.min(1.2, (d.level * 4 + d.bass * 0.6) * s.sens);
-      var k1 = 0.011, k2 = 0.014, turb = 1 + d.bass * s.sens * 2.5;
+      /* v2.2: o grave EMPURRA o campo. Velocidade, curva do vento, tamanho do grão e
+         uma expansão a partir do centro saem do grave e do soco, então o pó inteiro
+         abre na batida e se recolhe devagar no vale. Antes a velocidade saía de um
+         grave cravado no talo e o pó andava sempre no mesmo passo. */
+      var energy = Math.min(1.2, 0.25 + 0.75 * sm.energia);
+      var k1 = 0.011, k2 = 0.014, turb = 1 + Math.min(2.2, 1.4 * gS * ax);
+      var kV = Math.max(0.7, Math.min(2.4, Math.sqrt(w * h) / 380));
+      var abre = (Math.min(1.6, (0.3 * gS + 1.7 * sm.soco) * ax) - 0.12) * dt, cxF = w / 2, cyF = h / 2;
+      var grao = 1 + Math.min(0.7, 0.5 * gS * ax);
       CV.blend(m, c);
       var mono = CV.isMono(m);
       /* 520 partículas EM LOTES: 4 cores × 5 faixas de opacidade = 20 trocas de cor por
@@ -1670,13 +1828,14 @@
       var CN = mono ? 1 : 4, AN = 5, bk = m.st._bk;
       if (!bk || bk.length !== CN * AN) { bk = m.st._bk = []; for (var z = 0; z < CN * AN; z++) bk.push([]); }
       for (z = 0; z < bk.length; z++) bk[z].length = 0;
-      var vstep = (6 + energy * 170) * dt, jit = d.high * s.sens * 5, gm = 0.1 + 0.9 * gate;
+      var vstep = (8 + 70 * energy + Math.min(2.4, 1.0 * gS + 1.3 * sm.soco) * ax * 140) * kV * dt;
+      var jit = sm.agudo * Math.min(2, ax) * 5, gm = 0.1 + 0.9 * gate;
       var maxA = 0.03 + 0.7 * (0.25 + energy);
       for (var i = 0; i < ps.length; i++) {
         var p = ps[i];
         var a = (Math.sin(p.y * k1 + pt2 * 1.7) + Math.cos(p.x * k2 - pt2 * 1.2)) * Math.PI * turb;
-        p.x += Math.cos(a) * vstep + (Math.random() - 0.5) * jit;
-        p.y += Math.sin(a) * vstep + (Math.random() - 0.5) * jit;
+        p.x += Math.cos(a) * vstep + (Math.random() - 0.5) * jit + (p.x - cxF) * abre;
+        p.y += Math.sin(a) * vstep + (Math.random() - 0.5) * jit + (p.y - cyF) * abre;
         p.life -= dt * 0.22;
         if (p.life <= 0 || p.x < -4 || p.x > w + 4 || p.y < -4 || p.y > h + 4) {
           p.x = Math.random() * w; p.y = Math.random() * h; p.life = 1; p.b = Math.random();
@@ -1686,7 +1845,7 @@
         var al = (0.03 + (star2 ? 0.7 : 0.16) * p.life * (0.25 + energy)) * gm;
         var ai = (al / maxA * AN) | 0; if (ai > AN - 1) ai = AN - 1; if (ai < 0) ai = 0;
         var ci = mono ? 0 : ((p.b * 4) | 0) & 3;
-        bk[ci * AN + ai].push(p.x, p.y, star2 ? 2.2 : 1.1);
+        bk[ci * AN + ai].push(p.x, p.y, (star2 ? 2.2 : 1.1) * grao);
       }
       for (var ci2 = 0; ci2 < CN; ci2++) {
         var pcol = mono ? [0, 0, 100] : CV.pal(m, ci2, t);
@@ -1713,25 +1872,37 @@
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
       c.clearRect(0, 0, w, h);
       if (!d) return;
-      var gate = CV.gate(m, d, dt);
+      var gate = CV.gate(m, d, dt), sm = CV.som(d), ax = CV.rx(m);
       var K = Math.round(s.camadas);
-      // guarda um retrato da onda a cada 3 frames
+      var gS = CV.env(m, 'wlG', sm.grave, dt, 0.01, 0.12);
+      /* v2.2b: a PILHA INTEIRA respira no grave. Medido na bancada: com o kick só no
+         retrato novo, a pilha sempre carregava um beat inteiro de cristas (14 camadas =
+         0,7s) e ficava do mesmo tamanho no kick e no vale (altura 0,68 > 0,65). Agora o
+         kick estica a pilha pra cima (o topo sobe de 20% pra 4% da altura) e estufa
+         todas as cristas; no vale ela assenta. O pé fica preso no rodapé. */
+      var pk = CV.env(m, 'wlP', Math.min(1, (0.55 * gS + 0.7 * sm.soco) * ax), dt, 0.012, 0.15);
+      var infla = 0.8 + 0.45 * pk;
+      /* v2.2: cada retrato já nasce com autoganho e com o tamanho do grave daquele
+         instante. A pilha vira um registro do ritmo: a camada do kick sobe alta, a do
+         vale fica baixa. Antes era amostra crua x 16% da altura. */
       if (++m.st.skip % Math.max(1, Math.round(3 / s.speed)) === 0) {
         var td = d.time, P = CV.det(m, 96, 288), snap = new Float32Array(P);
         var stp = Math.floor(td.length / P);
-        for (var i = 0; i < P; i++) snap[i] = td[i * stp];
+        var gk = CV.ganhoOnda(d, 0.95, 8) * CV.respira(m, 0.6 * gS + 0.6 * sm.soco, 0.5);
+        for (var i = 0; i < P; i++) snap[i] = td[i * stp] * gk;
         m.st.hist.push(snap);
         if (m.st.hist.length > K) m.st.hist.shift();
       }
       var hist = m.st.hist, L = hist.length;
       if (!L) return;
       var mono = CV.isMono(m);
-      var pad = h * 0.12, span = h - pad * 2;
+      // a pilha desce do alto até o rodapé, e as cristas da frente sobem por cima das de trás
+      var top = h * (0.2 - 0.16 * pk), span = h * 0.94 - top;
       for (var j = 0; j < L; j++) {
         var depth = j / Math.max(1, L - 1); // 1 = mais recente, embaixo
         var snap2 = hist[j];
-        var yBase = pad + depth * span;
-        var amp = h * 0.16 * s.sens * (0.4 + depth * 0.6) * (0.15 + 0.85 * gate);
+        var yBase = top + depth * span;
+        var amp = h * 0.24 * infla * (0.4 + depth * 0.6) * (0.15 + 0.85 * gate);
         var col = mono ? [0, 0, 100] : CV.pal(m, j, t);
         var alpha = 0.08 + depth * 0.72;
         c.strokeStyle = CV.hsla(col, alpha);
@@ -1739,7 +1910,8 @@
         c.beginPath();
         for (var x2 = 0; x2 < snap2.length; x2++) {
           var px = x2 / (snap2.length - 1) * w;
-          var py = yBase - Math.abs(snap2[x2]) * amp - snap2[x2] * amp * 0.4;
+          var sobe = Math.abs(snap2[x2]) * amp + snap2[x2] * amp * 0.4;
+          var py = yBase - (sobe > 0 ? CV.joelho(sobe, yBase - 1) : sobe);
           x2 === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
         }
         c.stroke();
@@ -1758,43 +1930,64 @@
     init: function (m) { m.st.threads = []; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      CV.fade(m, c, s.trail);
-      if (!d) return;
+      if (!d) { CV.fade(m, c, s.trail); return; }
       var want = Math.round(s.fios);
       while (m.st.threads.length < want) {
         var idx = m.st.threads.length;
         m.st.threads.push({ i: idx, hist: [], r: 0, rv: 0 });
       }
       if (m.st.threads.length > want) m.st.threads.length = want;
-      var cx = w / 2, cy = h / 2, base = Math.min(w, h);
-      var gate = CV.gate(m, d, dt);
-      var bass = d.bass * s.sens, high = d.high * s.sens;
+      /* v2.2: os fios correm numa ELIPSE do tamanho do painel (era um círculo do
+         tamanho do lado menor: numa barra de 1440x170 eles viviam nos 14% do meio).
+         O raio é uma mola: o grave e a energia abrem a órbita, o soco do kick dá o
+         coice pra fora e o vale recolhe. Raio em fração da metade do painel. */
+      var cx = w / 2, cy = h / 2, RXf = w * 0.46, RYf = h * 0.46;
+      var gate = CV.gate(m, d, dt), sm = CV.som(d), ax = CV.rx(m);
+      var gS = CV.env(m, 'fiG', sm.grave, dt, 0.01, 0.12);
+      var abre = CV.respira(m, 0.6 * gS + 0.4 * sm.energia, 0.55);
+      var coice = 17 * sm.soco * Math.min(1.6, ax) * dt;   // ~2,5/s de empurrão por kick
+      /* v2.2b: a mola só mexia na CABEÇA do fio, e o rastro (70 a 150 pontos, 1 a 2,5s)
+         segurava o desenho do mesmo tamanho no kick e no vale (medido: área 0,57 > 0,56).
+         Agora o rastro guarda a posição em relação ao centro e o desenho inteiro é
+         escalado pelo grave de AGORA: no kick a fita toda abre até a borda, no vale
+         recolhe pra 2/3. Abre em 35ms e solta em 0,25s: abrindo em 12ms o fade deixava
+         cópias da fita em anéis (efeito mola) e soltando mais rápido virava borrão de
+         zoom a cada recolhida. O joelho entra só no desenho, então nada sai do painel. */
+      var P = CV.env(m, 'fiP', CV.respira(m, 0.5 * gS + 0.7 * sm.soco, 0.66), dt, 0.035, 0.25);
+      /* enquanto a fita muda de escala, o rastro do fade apaga mais rápido: cada quadro
+         antigo ficou num tamanho diferente, e 20 quadros de rastro viravam 20 contornos
+         da mesma fita (hachura). Parada, o rastro volta a ser o do controle. */
+      var dP = m.st.fiP0 === undefined ? 0 : Math.abs(P - m.st.fiP0);
+      m.st.fiP0 = P;
+      CV.fade(m, c, s.trail * (1 - Math.min(0.85, dP * 40)));
       // o relógio dos fios é a música: sem som eles param no lugar
       if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * (0.05 + gate * 1.4 + d.beatPulse * 0.6);
+      m.st.pt += dt * (0.05 + gate * 1.4 + sm.soco * 0.8 * Math.min(1.5, ax));
       var pt2 = m.st.pt;
       CV.blend(m, c);
       m.st.threads.forEach(function (th) {
         var i = th.i;
         var sp = s.speed * (0.5 + i * 0.09);
         var ang = pt2 * sp * 0.9 + i * (6.283 / m.st.threads.length);
-        // raio com mola: beat dá o coice, silêncio recolhe pro centro
-        var rT = base * (0.04 + (0.12 + 0.14 * Math.sin(pt2 * 0.37 + i * 1.3)) * gate) * (1 + bass * 0.9);
-        if (d.beat) th.rv += base * 0.5;
-        th.rv += (rT - th.r) * 8 * dt - th.rv * 4 * dt;
+        // v2.2b: órbita maior (no kick o raio chega perto de 1, a borda do painel)
+        var rT = (0.1 + 0.95 * abre * (0.85 + 0.15 * Math.sin(pt2 * 0.37 + i * 1.3))) * gate;
+        th.rv += coice;
+        th.rv += (rT - th.r) * 26 * dt - th.rv * 7 * dt;
         th.r += th.rv * dt;
-        var wob = Math.sin(pt2 * 3.1 + i * 2.2) * base * 0.05 * (1 + d.mid * 2) * gate;
-        var hx = cx + Math.cos(ang) * (th.r + wob);
-        var hy = cy + Math.sin(ang * 1.3 + i) * (th.r * 0.8 + wob);
+        if (th.r < 0) { th.r = 0; th.rv = 0; }
+        var wob = Math.sin(pt2 * 3.1 + i * 2.2) * 0.05 * (1 + sm.medio * 2) * gate;
+        // posição da cabeça EM RELAÇÃO AO CENTRO (px); o centro e o joelho entram no desenho
+        var ox = Math.cos(ang) * (th.r + wob) * RXf;
+        var oy = Math.sin(ang * 1.3 + i) * (th.r * 0.92 + wob) * RYf;
         // se o mouse está em cima, os fios correm atrás dele
         if (m.mouse && m.mouse.over) {
-          hx = hx * 0.45 + m.mouse.x * 0.55;
-          hy = hy * 0.45 + m.mouse.y * 0.55;
+          ox = ox * 0.45 + (m.mouse.x - cx) * 0.55;
+          oy = oy * 0.45 + (m.mouse.y - cy) * 0.55;
         }
         // agudo treme a mão
-        hx += (Math.random() - 0.5) * high * 14;
-        hy += (Math.random() - 0.5) * high * 14;
-        th.hist.push([hx, hy]);
+        ox += (Math.random() - 0.5) * sm.agudo * Math.min(2, ax) * 7;
+        oy += (Math.random() - 0.5) * sm.agudo * Math.min(2, ax) * 7;
+        th.hist.push([ox, oy]);
         // o rastro acompanha o painel: 70 pontos em tela cheia é uma fita curtinha
         if (th.hist.length > CV.det(m, 70, 150)) th.hist.shift();
         /* ERA O PIOR GARGALO DO APP: 5 fios × 69 segmentos = 345 traços por quadro,
@@ -1810,10 +2003,13 @@
           var age = (g + 0.5) / SEG;
           var cl = CV.pal(m, i + Math.floor(age * 2), t + age * 0.4);
           c.strokeStyle = CV.hsla(cl, (0.05 + age * 0.5) * (0.1 + 0.9 * gate));
-          c.lineWidth = CV.lw(m, 0.5 + age * 2.6 * (0.6 + bass));
+          c.lineWidth = CV.lw(m, 0.5 + age * 2.6 * (0.75 + 0.6 * gS));
           c.beginPath();
-          c.moveTo(th.hist[a0][0], th.hist[a0][1]);
-          for (var k2 = a0 + 1; k2 < a1; k2++) c.lineTo(th.hist[k2][0], th.hist[k2][1]);
+          for (var k2 = a0; k2 < a1; k2++) {
+            var hp = th.hist[k2];
+            var qx = cx + CV.joelho(hp[0] * P, w * 0.49), qy = cy + CV.joelho(hp[1] * P, h * 0.49);
+            k2 === a0 ? c.moveTo(qx, qy) : c.lineTo(qx, qy);
+          }
           c.stroke();
         }
       });
@@ -1836,26 +2032,35 @@
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
       CV.fade(m, c, s.trail);
       if (!d) return;
-      var gate = CV.gate(m, d, dt);
+      var gate = CV.gate(m, d, dt), sm = CV.som(d), ax = CV.rx(m);
       var ps = m.st.ps, want = Math.round(CV.det(m, 90, 170) * s.dens);
       while (ps.length < want) ps.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20, b: Math.random() });
       if (ps.length > want) ps.length = want;
       if (m.st.pt === undefined) m.st.pt = 0;
-      m.st.pt += dt * s.speed * (0.2 + gate * 0.9);
+      m.st.pt += dt * s.speed * (0.2 + gate * 0.9 + sm.soco * 0.7 * Math.min(1.5, ax));
       // bando persegue um alvo que passeia; o mouse chama pra ele
       var tx = w * (0.5 + 0.34 * Math.sin(m.st.pt * 0.6));
       var ty = h * (0.5 + 0.34 * Math.cos(m.st.pt * 0.47));
       if (m.mouse && m.mouse.over) { tx = m.mouse.x; ty = m.mouse.y; }
-      var scatter = d.beat, energy = Math.min(1.4, (d.level * 3.5 + d.bass) * s.sens);
+      /* v2.2: o grave AFROUXA o bando. Enquanto o grave segura, a atração cai (até 45%
+         no grave cheio) e a constelação se abre pelo painel; no vale ela se junta de
+         novo. O estouro do beat é do tamanho do kick e cresce com a Reação. Antes a
+         atração saía de um grave cravado no talo e o bando tinha sempre o mesmo aperto.
+         Empurrão pra fora contínuo foi testado e descartado: o bando grudava nas bordas. */
+      var gS = CV.env(m, 'enG', sm.grave, dt, 0.012, 0.14);
+      var energy = Math.min(1.4, 0.3 + sm.energia);
+      var solta = 1.1 - 0.62 * Math.min(1, gS * ax);
+      var estoura = d.beat ? (0.55 + 0.45 * Math.min(1.6, ax)) * (0.6 + 0.6 * Math.max(sm.soco, gS)) : 0;
+      var tr = (sm.agudo * 0.7 + gS * 0.5) * Math.min(2, ax) * 20;
       var mono = CV.isMono(m), n = ps.length, i, j;
       for (i = 0; i < n; i++) {
         var p = ps[i];
         var dxc = tx - p.x, dyc = ty - p.y, dist = Math.sqrt(dxc * dxc + dyc * dyc) + 0.001;
-        var pull = (0.5 + energy * 1.6) * (0.25 + 0.75 * gate);
+        var pull = (0.5 + energy * 1.6) * (0.25 + 0.75 * gate) * solta;
         p.vx += (dxc / dist) * pull; p.vy += (dyc / dist) * pull;
-        if (scatter) { p.vx -= (dxc / dist) * (90 + p.b * 160); p.vy -= (dyc / dist) * (90 + p.b * 160); }
-        p.vx += (Math.random() - 0.5) * d.high * s.sens * 20;
-        p.vy += (Math.random() - 0.5) * d.high * s.sens * 20;
+        if (estoura) { p.vx -= (dxc / dist) * (90 + p.b * 160) * estoura; p.vy -= (dyc / dist) * (90 + p.b * 160) * estoura; }
+        p.vx += (Math.random() - 0.5) * tr;
+        p.vy += (Math.random() - 0.5) * tr;
         p.vx *= 0.92; p.vy *= 0.92;
         p.x += p.vx * dt * 6; p.y += p.vy * dt * 6;
         if (p.x < 0) { p.x = 0; p.vx *= -0.6; } else if (p.x > w) { p.x = w; p.vx *= -0.6; }
@@ -1915,7 +2120,7 @@
       for (var ci2 = 0; ci2 < CN; ci2++) {
         var ncol = mono ? [0, 0, 100] : CV.pal(m, ci2, t);
         for (var bg = 0; bg < 2; bg++) {
-          var sz = bg ? 4 : 2.4, off = sz * 0.5, any = false;
+          var sz = (bg ? 4 : 2.4) * (1 + 0.6 * Math.min(1, gS * ax)), off = sz * 0.5, any = false;
           c.beginPath();
           for (j = 0; j < n; j++) {
             var q = ps[j];
@@ -1941,20 +2146,23 @@
     '  vec2 mo = (u_mouse - 0.5);',
     '  float x = uv.x + mo.x * 0.15;',
     '  float fold = fbm(vec2(x * 3.0 + t * 0.15, t * 0.1));',
-    '  float sway = sin(x * 8.0 + t * 0.6 + u_bass * 4.0) * 0.12 * (0.5 + u_bass);',
+    '  float g = clamp(u_bass, 0.0, 1.4);',
+    '  float sway = sin(x * 8.0 + t * 0.6 + g * 3.0) * 0.12 * (0.45 + g);',
     '  float cx = x + (sway + (fold - 0.5) * 0.4) * u_a;',
     '  float curtain = 0.0;',
+    /* v2.2: a cortina SOBE com o grave. A faixa acesa ia de 0 a 1,05 da altura com o
+       miolo fixo; agora o pé desce e o topo sobe no kick, e a luz toma o painel. */
+    '  float vfall = smoothstep(-0.18*g, 0.62 - 0.27*g, uv.y) * (1.0 - smoothstep(0.55 + 0.18*g, 1.08 + 0.15*g, uv.y));',
     '  for (int i = 0; i < 3; i++){',
     '    float fi = float(i);',
     '    float bands = fbm(vec2(cx * (u_b + fi*3.0), uv.y * 1.4 - t * (0.25 + fi*0.12) - fi));',
-    '    float vfall = smoothstep(0.0, 0.65, uv.y) * smoothstep(1.05, 0.5, uv.y);',
     '    curtain += bands * vfall * (0.5 - fi*0.12);',
     '  }',
     '  curtain = pow(max(curtain, 0.0), 1.6);',
     '  float shimmer = u_high * 0.4 * pow(fbm(vec2(cx*30.0, uv.y*20.0 - t*4.0)), 4.0) * smoothstep(0.4,1.0,uv.y);',
     '  float hue = u_hue + cx * 0.15 + curtain * 0.15;',
     '  vec3 base = pal(hue);',
-    '  vec3 col = base * (curtain * (1.2 + u_bass*1.2) + shimmer);',
+    '  vec3 col = base * (curtain * (0.8 + g*0.5) + shimmer);',
     '  col += base * u_beat * 0.15;',
     '  gl_FragColor = vec4(col * (0.03 + 0.97*u_gate), 1.0);',
     '}'
@@ -1964,14 +2172,17 @@
     name: 'Aurora', group: 'Arte', webgl: true, desc: 'Cortinas de luz no céu',
     defaults: defs({ dobra: 1, cortinas: 6 }),
     schema: [
-      { k: 'sens', label: 'Sensibilidade', min: 0.2, max: 3, step: 0.05, def: 1 },
+      { k: 'sens', label: 'Reação', min: 0.2, max: 2.5, step: 0.05, def: 1, fmt: 'pct' },
       { k: 'speed', label: 'Velocidade', min: 0.2, max: 3, step: 0.05, def: 1 },
       { k: 'dobra', label: 'Dobra da cortina', min: 0, max: 2.5, step: 0.05, def: 1 },
       { k: 'cortinas', label: 'Nº de cortinas', min: 2, max: 14, step: 0.5, def: 6 }
     ],
     init: function (m) { CV.glSetup(m, AURORA_FRAG); },
     draw: function (m, d, dt, t) {
-      if (!CV.glFrame(m, d, dt, m.s.dobra, m.s.cortinas)) {
+      // a cortina dobra mais no kick (a dobra vai de 70% no vale a ~130% na batida)
+      var sm = CV.som(d), gS = CV.env(m, 'auG', sm.grave, dt, 0.02, 0.16);
+      var dobra = m.s.dobra * (0.7 + Math.min(0.9, 0.6 * gS * CV.rx(m)));
+      if (!CV.glFrame(m, d, dt, dobra, m.s.cortinas)) {
         var c = m.canvas.getContext('2d'); if (!c) return;
         c.fillStyle = CV.bgOf(m); c.fillRect(0, 0, m.w, m.h);
       }
@@ -2019,18 +2230,34 @@
         m.st._ysh = h;
       }
       var yv = ys.y, yenv = ys.env, yu = ys.u, YN = yv.length;
+      /* v2.2: cada corda mede a SUA banda em dB contra o próprio pico recente (desce
+         8 dB/s). Antes o mapa legado deixava as cordas graves sempre no máximo e só as
+         agudas mexiam. As cordas abaixo de 160Hz seguem o grave da música, o soco do
+         kick dá a palhetada nelas, e a vibração pode passar do vão entre cordas
+         (até 1,8 vão na Reação Forte). */
+      var sm = CV.som(d), ax = CV.rx(m), gS = CV.env(m, 'cdG', sm.grave, dt, 0.01, 0.12);
+      var fdb = d.freqDb, cref = m.st.cref;
+      if (!cref || cref.length !== N) { cref = m.st.cref = new Float32Array(N); for (var z0 = 0; z0 < N; z0++) cref[z0] = -60; }
+      var kUp = 1 - Math.exp(-dt / 0.015), kDn = 1 - Math.exp(-dt / 0.25), largura = 0.9 + 0.9 * Math.min(1.5, ax);
       for (var i = 0; i < N; i++) {
-        var e = Math.pow(f[bins[i]] / 255, 1.2) * s.sens;
-        amp[i] += (e - amp[i]) * (e > amp[i] ? 0.5 : 0.06);
+        var b0 = bins[i], b1 = i < N - 1 ? bins[i + 1] : b0, dbv = -120;
+        if (fdb) { for (var bq = b0; bq <= Math.max(b0, (b0 + b1) >> 1); bq++) if (fdb[bq] > dbv) dbv = fdb[bq]; }
+        else dbv = f[b0] / 255 * 70 - 105.1;
+        cref[i] = Math.max(dbv, Math.max(-75, cref[i] - 8 * dt));
+        var e = (dbv - cref[i] + 22) / 22; e = e < 0 ? 0 : e > 1 ? 1 : e * e;
+        if (hzs[i] < 160) e = Math.max(e, gS);
+        e = Math.min(1.2, e * Math.min(1.25, ax));
+        amp[i] += (e - amp[i]) * (e > amp[i] ? kUp : kDn);
         var xi = pad + i * gapx;
         if (m.mouse && m.mouse.over && Math.abs(m.mouse.x - xi) < gapx * 0.6) amp[i] = Math.min(1, amp[i] + 0.5);
-        if (d.beat) amp[i] = Math.min(1, amp[i] + 0.22 * (0.4 + i / N));
+        if (sm.soco > 0.05) amp[i] = Math.min(1.2, amp[i] + 4 * sm.soco * Math.min(1.5, ax) * Math.pow(1 - i / N, 1.5) * dt);
         ph[i] += dt * (6 + hzs[i] * 0.01) * s.tensao * (0.5 + gate);
-        var A = amp[i] * gapx * 0.9 * (0.2 + 0.8 * gate);
+        var A = amp[i] * gapx * largura * (0.2 + 0.8 * gate);
         var col = mono ? [0, 0, 100] : CV.pal(m, i % 4, t);
-        var lum = Math.min(92, 40 + amp[i] * 45);
-        c.strokeStyle = CV.hsla([col[0], col[1], lum], 0.22 + amp[i] * 0.7);
-        c.lineWidth = CV.lw(m, 0.8 + amp[i] * 1.4);
+        var a1 = Math.min(1, amp[i]);
+        var lum = Math.min(92, 40 + a1 * 45);
+        c.strokeStyle = CV.hsla([col[0], col[1], lum], 0.22 + a1 * 0.7);
+        c.lineWidth = CV.lw(m, 0.8 + a1 * 1.4);
         c.beginPath();
         var mi = mode[i], phi = ph[i];
         for (var yq2 = 0; yq2 < YN; yq2++) {
@@ -2062,26 +2289,40 @@
       m.st.pt += dt * s.speed * CV.rate(m, d, dt, 0.05, 0.9, 0.4);
       var pt = m.st.pt, G = Math.round(s.grade), mono = CV.isMono(m), col = mono ? [0, 0, 90] : CV.pal(m, 0, t);
       // relevo e bandas também com inércia: o tecido ondula, não pisca
-      if (m.st.ampS === undefined) { m.st.ampS = 0; m.st.bassS = 0; m.st.midS = 0; }
+      if (m.st.ampS === undefined) { m.st.ampS = 0; }
       var kS = Math.min(1, dt * 6);
-      m.st.ampS += (Math.min(w, h) * 0.16 * s.sens * (0.15 + 0.85 * gate) - m.st.ampS) * kS;
-      m.st.bassS += (d.bass - m.st.bassS) * kS;
-      m.st.midS += (d.mid - m.st.midS) * kS;
-      var amp = m.st.ampS, bass = m.st.bassS, mid = m.st.midS;
+      m.st.ampS += (Math.min(w, h) * 0.17 * (0.15 + 0.85 * gate) - m.st.ampS) * kS;
+      /* v2.2: o relevo segue o grave que se ajusta ao volume (ataque de 12ms, solta em
+         160ms) e o tecido inteiro ESTICA no kick, de 66% a 86% da altura. Antes o grave
+         chegava cravado no talo e a malha ondulava sempre do mesmo tamanho. */
+      var sm = CV.som(d), ax = CV.rx(m);
+      var bass = Math.min(1.3, CV.env(m, 'maG', sm.grave, dt, 0.012, 0.16) * ax);
+      var mid = Math.min(1.2, CV.env(m, 'maM', sm.medio, dt, 0.03, 0.2) * ax);
+      var puls = CV.env(m, 'maP', sm.soco, dt, 0.01, 0.18);
+      var amp = m.st.ampS, yS = 0.66 + 0.2 * Math.min(1, (0.5 * bass + 0.6 * puls * ax)), xS = 0.86 + 0.06 * Math.min(1, puls * ax);
+      // relevo: o grave levanta o tecido (de 0,35 a 1,85 do relevo base); o médio enruga
+      var zB = 0.35 + 1.15 * bass, zM = 0.2 + 0.55 * mid, zMax = zB + zM;
       var mx = (m.mouse && m.mouse.over) ? (m.mouse.x / w - 0.5) : 0, my = (m.mouse && m.mouse.over) ? (m.mouse.y / h - 0.5) : 0;
       function proj(gx, gy) {
         var nx = gx - 0.5, ny = gy - 0.5;
-        var z = Math.sin(gx * 6 + pt * 1.3 + Math.sin(gy * 5 - pt)) * (0.4 + bass * 1.4) + Math.cos(gy * 7 - pt * 1.1) * (0.2 + mid * 0.8);
-        z *= amp;
+        var z = Math.sin(gx * 6 + pt * 1.3 + Math.sin(gy * 5 - pt)) * zB + Math.cos(gy * 7 - pt * 1.1) * zM;
+        // a borda de cima e a de baixo ondulam menos: sem isso as fileiras do fundo se
+        // dobravam umas por cima das outras e a malha virava serrote contra a borda
+        z *= amp * (0.5 + 0.5 * Math.cos(ny * 3.1));
         var persp = 1 + ny * (0.5 + my * 0.5);
-        return [w * 0.5 + nx * w * 0.86 * persp + mx * 40, h * 0.5 + ny * h * 0.7 - z, z];
+        return [w * 0.5 + nx * w * xS * persp + mx * 40, h * 0.5 + CV.joelho(ny * h * yS - z, h * 0.49), z];
       }
       var pts = [], yi, xi;
       for (yi = 0; yi <= G; yi++) { var row = []; for (xi = 0; xi <= G; xi++) row.push(proj(xi / G, yi / G)); pts.push(row); }
       // PERFORMANCE: uma linha inteira por traço (2×G traços), em vez de um traço por segmento
       // (eram ~600 chamadas por quadro). O brilho vira 3 faixas de profundidade.
+      /* v2.2: a faixa é decidida por SEGMENTO (pelo meio dele), não por ponto. Por ponto, a
+         linha só era desenhada entre dois vizinhos da mesma faixa: onde a profundidade
+         trocava, sobrava buraco, e o resto virava escada. Agora todo segmento sai, na
+         faixa do meio dele, e a malha fica inteira. */
       c.lineWidth = CV.lw(m, 1);
-      var BANDS = 3, bi2, row2, p2;
+      var BANDS = 3, bi2, row2, p2, q2, zN = 1 / (amp * zMax + 0.001);
+      var faixa = function (za, zb) { var bn = (za + zb) * 0.5 * zN * 0.5 + 0.5; return bn < 0 ? 0 : bn > 0.9999 ? 0.9999 : bn; };
       for (bi2 = 0; bi2 < BANDS; bi2++) {
         var lo = bi2 / BANDS, hi = (bi2 + 1) / BANDS, mid2 = (lo + hi) / 2;
         c.strokeStyle = CV.hsla([col[0], col[1], 40 + mid2 * (mono ? 45 : 30)], (0.22 + mid2 * 0.5) * (0.2 + 0.8 * gate));
@@ -2089,19 +2330,19 @@
         for (yi = 0; yi <= G; yi++) {
           row2 = pts[yi];
           var drawing = false;
-          for (xi = 0; xi <= G; xi++) {
-            p2 = row2[xi];
-            var bn = Math.min(1, Math.max(0, p2[2] / (amp + 0.001) * 0.5 + 0.5));
-            if (bn >= lo && bn < hi) { drawing ? c.lineTo(p2[0], p2[1]) : (c.moveTo(p2[0], p2[1]), drawing = true); }
+          for (xi = 0; xi < G; xi++) {
+            p2 = row2[xi]; q2 = row2[xi + 1];
+            var bn = faixa(p2[2], q2[2]);
+            if (bn >= lo && bn < hi) { if (!drawing) { c.moveTo(p2[0], p2[1]); drawing = true; } c.lineTo(q2[0], q2[1]); }
             else drawing = false;
           }
         }
         for (xi = 0; xi <= G; xi++) {
           var drawing2 = false;
-          for (yi = 0; yi <= G; yi++) {
-            p2 = pts[yi][xi];
-            var bn2 = Math.min(1, Math.max(0, p2[2] / (amp + 0.001) * 0.5 + 0.5));
-            if (bn2 >= lo && bn2 < hi) { drawing2 ? c.lineTo(p2[0], p2[1]) : (c.moveTo(p2[0], p2[1]), drawing2 = true); }
+          for (yi = 0; yi < G; yi++) {
+            p2 = pts[yi][xi]; q2 = pts[yi + 1][xi];
+            var bn2 = faixa(p2[2], q2[2]);
+            if (bn2 >= lo && bn2 < hi) { if (!drawing2) { c.moveTo(p2[0], p2[1]); drawing2 = true; } c.lineTo(q2[0], q2[1]); }
             else drawing2 = false;
           }
         }
