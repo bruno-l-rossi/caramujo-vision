@@ -156,6 +156,18 @@ Em **Ajustes › Janela** dá pra limitar os quadros por segundo: **Da tela** ac
 
 Aperte `F` pra ver os quadros por segundo e quanto tempo o som leva pra chegar na tela.
 
+## v2.3: medidores no molde do MiniMeters
+
+- O espectro foi medido contra o MiniMeters num vídeo, quadro a quadro, com um sinal de teste. Eixo, escala de dB, subida e queda batem com os dele.
+- Duas curvas, como as dele: Mid vermelha e Side azul. O controle **Curvas** troca pra Só Mid ou pra L e R.
+- Barras de cor por baixo da linha. Acendem com o som de agora e apagam antes da linha descer.
+- A leitura fica parada no pico, no formato dele (dB, Hz, nota e cents). Com o mouse em cima, segue o mouse.
+- A onda pinta cada coluna com a cor das três bandas, como a multibanda do MiniMeters, e nasce com um canal só.
+- O estéreo virou goniômetro: um canal sozinho sai inclinado a 45°. No tema MiniMeters o raio é em dB e não fica rastro, como no dele.
+- No tema MiniMeters o loudness fica igual ao dele: pico de L e R em barras finas, o curto numa barra larga e o número do curto na etiqueta azul. O número bate com o dele na casa decimal. O médio continua nos outros temas.
+- No tema MiniMeters o osciloscópio é a linha verde dele, numa janela fixa de 43 ms.
+- Saiu o **Brilho na batida** do espectro (o MiniMeters não tem).
+
 ## v2.2: reação ao som
 
 - O grave voltou a mandar. O sinal que a arte usava vivia no talo (no beat demo a mediana era 0,997 de 1), então o kick não tinha pra onde subir. Agora ele encosta no 1 no kick e desce no vale.
@@ -224,7 +236,7 @@ Em **Ajustes › Áudio** o estado mostra **Estéreo nativo** quando ele está a
 npm test
 ```
 
-Roda 144 checagens em 1 ou 2 segundos: motor de áudio, a reação ao grave (um beat sintético em dois volumes), os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
+Roda 161 checagens em poucos segundos: motor de áudio, a reação ao grave (um beat sintético em dois volumes), o espectro e os medidores contra as medidas do MiniMeters, os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
 
 ## Estrutura
 

@@ -13,7 +13,7 @@ npm test
 npm start
 ```
 
-`npm test` roda as 144 checagens e leva 1 ou 2 segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
+`npm test` roda as 161 checagens e leva poucos segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
 
 Dentro do app: `S` abre os ajustes, `P` pausa, `T` troca o tema, `F` mostra fps e o atraso do som, `H` deixa a barra de ferramentas fixa. `Esc` fecha o que estiver aberto.
 

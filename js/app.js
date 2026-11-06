@@ -1326,7 +1326,7 @@
     h += '</div></div><div class="sec"><h4>Como usar</h4>' +
       '<p class="note">Arraste a divisória entre dois visuais pra mudar o tamanho. Arraste pela alça <b>⋮⋮</b> pra trocar de lugar: solte do lado pra encaixar na linha, em cima ou embaixo pra abrir uma linha nova.</p>' +
       '<p class="note">O preset guarda quais visuais estão na tela e o tamanho de cada um. Tema e posição são separados.</p></div>' +
-      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision 2.2</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
+      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision 2.3</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
     setBody.innerHTML = h;
   }
   function setToolbarMode(m) {

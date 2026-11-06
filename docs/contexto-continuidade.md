@@ -1,5 +1,35 @@
+<v23_molde_minimeters_novembro_2026>
+LEIA ESTE PRIMEIRO, depois o da v2.2, o da v2.1 e o da v2. Quarta rodada de novembro (noite de 5/nov).
+PEDIDO DO BRUNO: gravou a tela com o MiniMeters tocando o sinal de teste (medicao/) e mandou o print dos ajustes do Espectro dele. "Analise os resultados. Deixe o mais parecido e próximo possível." Foco no espectro, valendo pros outros medidores também.
+AJUSTES DELE NO PRINT, agora o nosso padrão: Espectro em Os dois (linha + barras), suavidade 90%, tilt 4,5 dB/oitava, FFT 4096, escala Log, Mid e Side. Onda com Canal 2 desligado.
+COMO FOI MEDIDO: vídeo a 60 quadros, 3600 px de largura (Retina). Sincronia pelo clique: tempo do vídeo = tempo do sinal + 2,434 s. Quadro com ffmpeg -ss ANTES do -i (o filtro select decodifica do começo e estoura o tempo). Bancada em lab/ (fora do repo): harness.html alimenta o AudioEngine com o WAV em blocos de 1/60 s e desenha o módulo no Chrome headless (puppeteer-core) nos mesmos instantes do vídeo; compara.py monta a folha com o MiniMeters em cima e o Caramujo embaixo.
+
+ESPECTRO, O MODELO DELE (medido; é o que está no código):
+- Eixo x = log10(f/Δ + 1) / log10(Nyquist/Δ + 1), Δ = largura da raia, de 0 Hz ao Nyquist. 100 Hz, 1 kHz e 10 kHz caem em 29,7%, 58,6% e 88,7% da largura.
+- Janela de -80 a -20 dB depois do tilt de 4,5 dB/oitava com pivô em 1 kHz. Passou do topo, corta. A raia 0 (DC) fica no chão.
+- Média na potência: 0,9 a cada 256 amostras (τ = 51 ms a 48 kHz). Cai 86 dB/s em linha reta e sobe em ~5 quadros.
+- Duas curvas: Mid vermelha (#fd4d6a) por cima, Side azul (#3c93fb) por baixo. Linha reta de raia em raia; passando de 3 raias por pixel, vai o mínimo e o máximo da coluna.
+- Barras: ALTURA = a linha (média), COR = o nível do instante, sem média, numa rampa carmim, rosa e branco. Opacas por cima da grade. Coluna com várias raias pinta com a média delas (com o máximo o agudo saía 40% mais aceso que o dele).
+- Grade em todo passo de década (#4f606e). Rótulos 100Hz, 1kHz e 10kHz com a linha aberta atrás.
+- Leitura parada no pico, no formato dele: "-6.01dB | 999.96Hz | B5  + 21 Cents". Caixa #202124, texto branco em negrito, frequência e nível pela parábola nas 3 raias do pico. Com o mouse em cima, segue o mouse.
+ESPECTRO NO CÓDIGO: bloco ESPECTRO do modules.js reescrito. Controle novo "Curvas": Mid e Side (padrão), Só Mid, L e R. Saiu "Brilho na batida" (o dele não tem). audio.js: spectrum(n, 's') devolve o Side, (L - R)/2, com caixa própria. As barras saem de uma fileira de cores de 1 px (W x 1) usada de padrão num fill só: cor contínua e um polígono no lugar de ~1.400 retângulos. Nos outros temas a rampa usa as cores do tema (fundo, sombra do tema, traço); a rampa carmim é só do tema MiniMeters. CUIDADO: forçar saturação pelo tom do traço deixava o Preto dourado e o Papel oliva.
+RESULTADO: bate com o dele em todos os instantes conferidos (rosa, queda depois do corte, 1 kHz em 3 níveis, varredura, marcas, L e R, beat com side). 1 kHz a -30 dBFS fica a 0,827 da altura (o dele 0,833). A queda quadro a quadro fica a poucos px. Tom fora do centro da raia sai ~1 dB abaixo do dele no pico (pequeno, não perseguido).
+
+OUTROS MEDIDORES (mesmo vídeo):
+- ONDA: uma cor por coluna, a multibanda dele. Filtros de 1 polo em 152 Hz e 1.908 Hz, pico de cada banda elevado a 2,2, mistura grave [388,93,94], médio [14,134,17], agudo [0,129,298], canal maior normalizado em 255. Erro médio de 3,9/255 contra o vídeo. Função CV.corMultibanda(). Rola 345 px de dispositivo por segundo (no beat de 90 BPM, um kick a cada 230 px). Canal 2 desligado por padrão (uma pista, como a dele).
+- LOUDNESS, no tema MiniMeters (função loudMM): igual ao dele. Régua de 0 a -60 dB (rótulos 0, 6, 12, 24, 36, 50, em negrito), trilhos #1f252b com marca de 0 dB #37638b, duas barras finas de PICO (L e R: o maior das últimas 256 amostras, sem segurar; erro médio de 1,7 dB contra o vídeo quadro a quadro) e uma larga com o CURTO (3 s, sem alisar). Etiqueta azul #4fa9fe, texto #003285, "-14.3LUFS", com o número do CURTO. CUIDADO: a etiqueta mostrava o integrado e errava até 7 LU (beat: -12.4 contra -19.7 dele). O nosso lufsS bate com o dele na casa decimal nos 8 instantes conferidos. O médio (integrado) segue nos outros temas.
+- ESTÉREO: goniômetro M/S em todos os temas. Canal sozinho sai a 45°, mono sai em pé (antes o canal sozinho deitava no rodapé). No tema MiniMeters, também: cor RGB por ponto com as bandas da Onda (envelope de 3 ms); RAIO EM dB, 60 dB da raiz à borda (-12 dBFS num canal só chega a 80% do raio, como a linha dele; os pontos ficam ralos perto da raiz, como os dele); raiz 10 px acima do rodapé; cada quadro limpo, sem rastro. Com o rastro, a cúpula do chimbal ficava na tela o beat inteiro; no vídeo ela só aparece com o chimbal no buffer e no resto fica a linha do kick em pé. No Encher o pico recente sobe pra borda (até 30 dB).
+- OSCILOSCÓPIO, no tema MiniMeters: linha verde (#82fc98) sem véu, janela fixa de ~43 ms (2.048 amostras) disparada no último cruzamento de zero subindo, um ponto por pixel de tela. Nos outros temas segue como na v2.2.
+FICOU DIFERENTE DE PROPÓSITO: o Tamanho "Encher" da Onda, do Osciloscópio e do Estéreo (decisão da v2.2, confirmada de novo pelo Bruno). "Tamanho: Nível real" reproduz a amplitude dele. No Estéreo, o Encher empurra a nuvem pra borda: a linha de -12 dBFS vai a 95% do raio (a dele, 80%).
+SMOKE: 161 checagens. Seções novas "espectro no molde do MiniMeters" (9) e "medidores no molde do MiniMeters" (8). Se alguma cair, o desenho voltou a ficar diferente do dele.
+DESEMPENHO (Chrome sem GPU, painel 678x330 em 2x, desenho mais rasterização): espectro 12,5 ms (v2.2b: 10,2), estéreo 3,7 (4,7), onda 2,4 (2,8), loudness 0,3 (0,4), osciloscópio 3,4 (1,4). JavaScript do espectro ~1 ms. As barras num fill só tiraram 3 ms do espectro (eram ~1.400 retângulos). No Mac a rasterização vai pra placa de vídeo.
+MEDIR DE NOVO: o kit continua em medicao/ (no .gitignore): sinal-de-teste.wav (49 s, 48 kHz, gera_sinal.py) e LEIA.md com o passo a passo e a tabela de tempos (clique de sincronia em 2,0 s, rosa -18 dBFS de 4 a 10 s com corte seco, 1 kHz em -6/-18/-30, varredura de 18 a 30 s, marcas 50/200/1k/5k/12k, 440 Hz só L e 880 Hz só R, beat de 39 a 47 s). O WAV copiado pro Mac ganha ~5,7 KB de selo C2PA no fim; o áudio é idêntico (md5).
+VERSÃO: Sobre mostra 2.3; package.json 2.3.0. O app instalado continua o anterior até rodar npm run dist.
+PENDENTE: o Bruno testar no Mac (npm test, npm start) com o MiniMeters do lado. Se aprovar, commitar a rodada e gerar o .dmg 2.3.0.
+</v23_molde_minimeters_novembro_2026>
+
 <v22_reacao_ao_som_novembro_2026>
-LEIA ESTE PRIMEIRO, depois o da v2.1 e o da v2. Terceira rodada de novembro.
+Leia depois do bloco da v2.3 e antes do da v2.1 e do da v2. Terceira rodada de novembro.
 PEDIDO DO BRUNO: visuais mais responsivos à música, principalmente ao grave; por padrão a música com impacto maior no movimento; todos crescendo até ocupar boa parte do painel; configurável, mas o padrão é esse.
 DECISÃO DELE (perguntada, opção "Arte + forma"): mudam as 10 artes, a Onda, o Osciloscópio e o Estéreo. Espectro, Loudness, VU e Espectrograma ficam calibrados, iguais ao MiniMeters. NÃO colocar Reação nesses 4 sem ele pedir (o smoke tem guarda). Ele CONFIRMOU de novo na v2.2b: "pode manter a decisão de ontem".
 

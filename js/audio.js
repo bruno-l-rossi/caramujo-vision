@@ -1043,8 +1043,8 @@
      frequências (4096 = 85ms). No MiniMeters isso é uma configuração DO espectro,
      não do app, e aqui é igual. Roda no máximo uma vez por quadro, mesmo com vários
      painéis de espectro abertos. */
-  /* ch: undefined = mistura dos dois canais (como sempre foi), 'l' ou 'r' = um canal
-     só. O MiniMeters desenha DUAS curvas, uma por canal, e é isso que dá a leitura
+  /* ch: undefined = mistura dos dois canais (MID, como sempre foi), 'l' ou 'r' = um
+     canal só, 's' = SIDE. O MiniMeters desenha DUAS curvas, uma por canal, e é isso que dá a leitura
      de estéreo no espectro. Cada canal tem a sua caixa de cache, então nenhuma FFT
      nasce duas vezes. */
   AudioEngine.prototype.spectrum = function (n, ch) {
@@ -1056,7 +1056,7 @@
        cosseno e bit-reverse eram jogadas fora duas vezes por quadro. Agora cada
        tamanho tem a sua caixa e a FFT nasce uma vez na vida. */
     var slots = this._spec || (this._spec = {});
-    var key = (ch === 'l' || ch === 'r') ? n + ch : n;
+    var key = (ch === 'l' || ch === 'r' || ch === 's') ? n + ch : n;
     var sl = slots[key];
     if (!sl) sl = slots[key] = { fft: new FFT(n), buf: new Float32Array(n), db: new Float32Array(n / 2), frame: -1 };
     // o módulo lê specBinHz logo depois de chamar: precisa valer também no cache quente
@@ -1069,6 +1069,9 @@
     for (i = 0; i < pad; i++) buf[i] = 0;
     if (ch === 'l') { for (i = 0; i < have; i++) buf[pad + i] = L[(base + i) & mask]; }
     else if (ch === 'r') { for (i = 0; i < have; i++) buf[pad + i] = R[(base + i) & mask]; }
+    // 's' = SIDE ((L-R)/2): a curva azul do MiniMeters. Medido no vídeo: o chimbal
+    // que só existe na diferença entre os canais aparece azul por cima do vermelho.
+    else if (ch === 's') { for (i = 0; i < have; i++) { var k2 = (base + i) & mask; buf[pad + i] = (L[k2] - R[k2]) * 0.5; } }
     else { for (i = 0; i < have; i++) { var k = (base + i) & mask; buf[pad + i] = (L[k] + R[k]) * 0.5; } }
     var mag = sl.fft.runRing(buf, n);
     var db = sl.db;

@@ -165,7 +165,7 @@
       cor: {
         spectrum: ['#fc4c69', '#3a93fb', '#4a0a1c'],
         loudness: ['#4da9fc', '#1e2529'],
-        scope: ['#6fb87b', '#3e6944'],
+        scope: ['#82fc98', '#3e6944'],   // v2.3: o verde do vídeo de 5/nov (tema Light Shard dele)
         gonio: ['#e5003a', '#f0e0cc'],
         wavescroll: ['#fd5648'],
         vu: ['#e8e8e8', '#fc4c69']
@@ -815,226 +815,389 @@
   }
 
   /* ================= ESPECTRO ================= */
+  /* v2.3: NO MOLDE DO MINIMETERS, medido no vídeo do Bruno (5/nov) com o sinal de
+     teste tocando nos dois apps ao mesmo tempo (medicao/sinal-de-teste.wav, 60 qps).
+     Cada número abaixo saiu de lá, não de olho:
+     - EIXO: x = log10(f + Δ), Δ = uma raia (48000/4096 = 11,7 Hz), de 0 Hz ao Nyquist.
+       É o log da raia + 1: a raia 0 cai na borda esquerda e cada raia do grave vira um
+       vértice. Bateu nas 29 linhas da grade dele (10, 20 ... 20k) com erro de 2 px.
+       O nosso ia de 20 Hz a 20 kHz em log puro e espremia o grave.
+     - ALTURA: de -80 a -20 dB depois do tilt (4,5 dB por oitava, pivô em 1 kHz).
+       1 kHz a -30 dBFS fica a 1/6 do topo; -18 e -6 encostam no topo. Sem joelho.
+     - TEMPO: média exponencial na POTÊNCIA de cada raia, 0,9 a cada 256 amostras
+       (τ = 51 ms em 48 kHz). Cai 86 dB/s em linha reta e sobe em uns 5 quadros. O
+       nosso caía em 0,83 s e a varredura deixava um rabo de meia década.
+     - DUAS CURVAS: MID ((L+R)/2) em vermelho, com barras e leitura, e SIDE ((L-R)/2)
+       em azul, por baixo. O tom só na esquerda a -12 dBFS lê -18 (é o mid), e o
+       chimbal que só existe na diferença entre os canais sobe azul. A v2.2 desenhava
+       L e R, e por isso as duas curvas dele "se separavam mais que as nossas".
+     - LINHA reta de raia em raia: polígono no grave, serrilha no agudo (onde passam
+       de 3 raias por pixel, vai o mínimo e o máximo de cada coluna).
+     - BARRAS DE COR: enchem até a linha, opacas por cima da grade, mas a COR sai do
+       espectro do instante, sem média: some no fundo, vira carmim a -10 dB do topo,
+       rosa no topo e branco quando passa dele. Na varredura o rabo é só da linha;
+       a cor fica só onde tem som agora.
+     - LEITURA: caixa colada no pico do espectro bruto (sem tilt), como a dele:
+       "-6.01dB | 999.96Hz | B5 + 21 Cents".
+     - GRADE: uma linha em cada dezena (10 a 90, 100 a 900, 1k a 9k, 10k, 20k) e
+       rótulo 100Hz, 1kHz, 10kHz no alto, com a linha interrompida atrás dele. */
+  var ESP_PISO = -80, ESP_FAIXA = 60;
+  var ESP_GRADE = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500, 600, 700, 800, 900,
+    1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 20000];
+  // posição 0..1 de uma frequência no eixo
+  function espU(f, nyq, delta, escala) {
+    if (f < 0) f = 0; else if (f > nyq) f = nyq;
+    if (escala === 'lin') return f / nyq;
+    if (escala === 'mel') return Math.log(1 + f / 700) / Math.log(1 + nyq / 700);
+    return Math.log(f / delta + 1) / Math.log(nyq / delta + 1);
+  }
+  function espHsl(h, s2, l) { return hslRgb(h, s2, l); }
+  function rgbHue(c) {
+    var r = c[0] / 255, g = c[1] / 255, b = c[2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (d < 1e-6) return 0;
+    var hh = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return (hh * 60 + 360) % 360;
+  }
+  /* rampa das barras: posição (nível normalizado, passa de 1 acima do topo) e cor.
+     Medida nas barras dele: (205,6,59) a -10 dB do topo, (255,24,82) a -3,3 dB,
+     (255,90,139) a +2 dB e branco a +14 dB. Os tons saem da cor da linha (matiz - 6°),
+     então outro tema ganha a própria rampa. */
+  function espRampa(m) {
+    var linha = corMedidor(m, 0, 0.88), bgHex = CV.bgOf(m) || '#191919';
+    var bg = [parseInt(bgHex.substr(1, 2), 16), parseInt(bgHex.substr(3, 2), 16), parseInt(bgHex.substr(5, 2), 16)];
+    var nome = (m.s && m.s.cmap && m.s.cmap !== 'auto') ? m.s.cmap : (CV.cmap0 && CV.cmap0 !== 'auto') ? CV.cmap0 : null;
+    var sig = (nome || '') + '|' + CV.themeOf(m) + '|' + linha.join(',') + '|' + bgHex;
+    var st = m.st;
+    if (st.rampa && st.rampa.sig === sig) return st.rampa;
+    var NQ = 96, U0 = 0.25, U1 = 1.23, cores = [], rgb = new Float32Array(NQ * 3), pts;
+    if (nome) {
+      pts = null;
+    } else if (CV.themeOf(m) !== 'minimeters') {
+      /* os outros temas pintam com as cores deles: fundo, sombra do tema, traço e,
+         no topo, rumo ao branco (escuro) ou ao preto (claro). Sem isto o Preto, que é
+         branco sem cor, saía dourado: a rampa forçava saturação num traço cinza. */
+      var somb = CV.corRGB(m, 2) || misturaRgb(linha, bg, 0.62, [0, 0, 0]);
+      var ext = CV.isLight(m) ? [0, 0, 0] : [255, 255, 255];
+      pts = [[0.25, bg], [0.45, misturaRgb(bg, somb, 0.5, [0, 0, 0])], [0.65, somb], [0.833, misturaRgb(somb, linha, 0.55, [0, 0, 0])],
+        [1.0, linha], [1.23, misturaRgb(linha, ext, CV.isLight(m) ? 0.5 : 0.7, [0, 0, 0])]];
+    } else {
+      // MiniMeters: a rampa medida no vídeo, carmim, rosa e branco, em volta do tom do traço
+      var h0 = rgbHue(linha) - 6, deep = espHsl(h0, 94, 41.4);
+      pts = [[0.25, bg], [0.40, misturaRgb(bg, deep, 0.08)], [0.53, misturaRgb(bg, deep, 0.22)], [0.65, misturaRgb(bg, deep, 0.39)],
+        [0.75, misturaRgb(bg, deep, 0.57)], [0.833, deep], [0.945, espHsl(h0 + 1, 100, 54.7)], [1.02, espHsl(h0 - 1, 100, 62.5)],
+        [1.04, espHsl(h0 - 2, 100, 67.6)], [1.12, espHsl(h0 - 5, 100, 83)], [1.23, [255, 244, 255]]];
+    }
+    for (var q = 0; q < NQ; q++) {
+      var u = U0 + (U1 - U0) * q / (NQ - 1), cor;
+      if (!pts) cor = CV.cmapRgb(nome, (u - U0) / (U1 - U0));
+      else {
+        var j = 0; while (j < pts.length - 2 && u > pts[j + 1][0]) j++;
+        var a = pts[j], b = pts[j + 1], f = Math.max(0, Math.min(1, (u - a[0]) / (b[0] - a[0])));
+        cor = misturaRgb(a[1], b[1], f, [0, 0, 0]);
+      }
+      cores.push('rgb(' + Math.round(cor[0]) + ',' + Math.round(cor[1]) + ',' + Math.round(cor[2]) + ')');
+      rgb[q * 3] = cor[0]; rgb[q * 3 + 1] = cor[1]; rgb[q * 3 + 2] = cor[2];
+    }
+    st.rampa = { sig: sig, cores: cores, rgb: rgb, NQ: NQ, U0: U0, U1: U1, uVis: pts ? 0.3 : U0 };
+    return st.rampa;
+  }
+  var NOTAS_MM = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  // "-13.56dB | 268.05Hz | C4  + 41 Cents", no formato da leitura dele
+  CV.leituraMM = function (db, f) {
+    var hz = f >= 1000 ? (f / 1000).toFixed(2) + 'kHz' : f.toFixed(2) + 'Hz';
+    var nota = '';
+    if (f >= 8) {
+      var mid = 69 + 12 * Math.log2(f / 440), r = Math.round(mid), cents = Math.round((mid - r) * 100);
+      var nm = NOTAS_MM[((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1);
+      while (nm.length < 3) nm += ' ';
+      nota = ' | ' + nm + ' ' + (cents < 0 ? '-' : '+') + ' ' + Math.abs(cents) + ' Cents';
+    }
+    return db.toFixed(2) + 'dB | ' + hz + nota;
+  };
+
   CV.register('spectrum', {
     name: 'Espectro', group: 'Estúdio', desc: 'Frequências em tempo real, com leitura de nota',
-    defaults: { estilo: 'ambos', smooth: 0.9, tilt: 4.5, fft: 4096, escala: 'log', acende: 1, cmap: 'auto' },
+    defaults: { estilo: 'ambos', smooth: 0.9, tilt: 4.5, fft: 4096, escala: 'log', canal: 'ms', cmap: 'auto' },
     schema: [
       { k: 'estilo', label: 'Estilo', type: 'seg', opts: [['fft', 'Linha'], ['barras', 'Barras'], ['ambos', 'Os dois']], def: 'ambos' },
       { k: 'smooth', label: 'Suavidade', type: 'range', min: 0, max: 0.98, step: 0.01, def: 0.9, fmt: 'pct' },
       { k: 'tilt', label: 'Tilt', type: 'range', min: 0, max: 9, step: 0.25, def: 4.5, fmt: 'db' },
       { k: 'fft', label: 'FFT', type: 'seg', opts: [[1024, '1k'], [2048, '2k'], [4096, '4k'], [8192, '8k'], [16384, '16k']], def: 4096 },
       { k: 'escala', label: 'Escala', type: 'seg', opts: [['mel', 'Mel'], ['log', 'Log'], ['lin', 'Linear']], def: 'log' },
-      { k: 'acende', label: 'Brilho na batida', type: 'seg', opts: [[0, 'Não'], [1, 'Sim']], def: 1 },
+      { k: 'canal', label: 'Curvas', type: 'seg', opts: [['ms', 'Mid e Side'], ['mid', 'Só Mid'], ['lr', 'L e R']], def: 'ms' },
       { k: 'cmap', label: 'Cor', type: 'select', opts: CV.CMAP_LIST, def: 'auto' }
     ],
-    init: function (m) { m.st.v = null; },
+    init: function (m) { m.st.pw = null; },
     draw: function (m, d, dt, t) {
-      var c = m.ctx, w = m.w, h = m.h, s = m.s, st = m.st;
+      var c = m.ctx, w = m.w, h = m.h, s = m.s, st = m.st, i, k;
       c.clearRect(0, 0, w, h);
-      if (!d || !d.spectrum) return;
-      var FMIN = 20, FMAX = 20000;
-      var dbL = d.spectrum(s.fft, 'l'), nb = dbL.length, binHz = d.specBinHz;
-      var dbR = d.spectrum(s.fft, 'r');
-      var N = Math.max(64, Math.min(1000, Math.round(w / 2)));
-      if (!st.v || st.v.length !== N) {
-        st.v = new Float32Array(N); st.v2 = new Float32Array(N); st.raw = new Float32Array(N);
-        st.X = new Float32Array(N); st.Y = new Float32Array(N); st.Y2 = new Float32Array(N); st.Yf = new Float32Array(N);
-      }
-      var v = st.v, v2 = st.v2, raw = st.raw, X = st.X, Y = st.Y, Y2 = st.Y2, Yf = st.Yf, i;
+      if (!d || !d.spectrum || w < 4 || h < 4) return;
+      var n = s.fft || 4096, canal = s.canal === 'lr' || s.canal === 'mid' ? s.canal : 'ms';
+      var dbM = d.spectrum(n), nb = dbM.length, binHz = d.specBinHz;
+      var dbA = canal === 'ms' ? d.spectrum(n, 's') : canal === 'lr' ? d.spectrum(n, 'r') : null;   // curva azul, por baixo
+      var dbV = canal === 'lr' ? d.spectrum(n, 'l') : dbM;                                            // curva vermelha, por cima
+      var dpr = m.dpr || 1, nyq = binHz * nb, W = Math.max(1, Math.round(w * dpr));
 
-      /* EIXO: cada ponto cobre um pedaço do espectro (lo..hi). Onde o pedaço tem mais
-         de uma raia, vale o MAIOR (o pico não some no agudo); onde não tem, interpola. */
-      var ax = st.ax, sig = N + '|' + nb + '|' + binHz.toFixed(4) + '|' + s.escala + '|' + s.tilt + '|' + w;
+      /* EIXO E COLUNAS, refeitos só quando muda o tamanho, a FFT, a escala ou o tilt.
+         xb = x de cada raia (px de tela); tb = tilt de cada raia. Cada coluna de pixel
+         de dispositivo guarda as raias que caem nela (agudo) ou as duas vizinhas pra
+         interpolar (grave), que é como a barra acompanha o polígono da linha. */
+      var ax = st.ax, sig = nb + '|' + binHz.toFixed(4) + '|' + s.escala + '|' + s.tilt + '|' + W + '|' + w;
       if (!ax || ax.sig !== sig) {
-        ax = st.ax = { sig: sig, pos: new Float32Array(N), lo: new Int32Array(N), hi: new Int32Array(N), tilt: new Float32Array(N), hz: new Float32Array(N) };
-        var mMin = 2595 * Math.log10(1 + FMIN / 700), mMax = 2595 * Math.log10(1 + FMAX / 700);
-        var freqDe = function (u) {
-          if (s.escala === 'lin') return FMIN + (FMAX - FMIN) * u;
-          if (s.escala === 'mel') return 700 * (Math.pow(10, (mMin + (mMax - mMin) * u) / 2595) - 1);
-          return FMIN * Math.pow(FMAX / FMIN, u);
-        };
-        for (i = 0; i < N; i++) {
-          var u = i / (N - 1), fr = freqDe(u);
-          var fa = freqDe(Math.max(0, u - 0.5 / (N - 1))), fb = freqDe(Math.min(1, u + 0.5 / (N - 1)));
-          ax.hz[i] = fr; ax.pos[i] = fr / binHz;
-          ax.lo[i] = Math.max(0, Math.floor(fa / binHz)); ax.hi[i] = Math.min(nb - 1, Math.ceil(fb / binHz));
-          // tilt em dB por oitava a partir de 1kHz, e o subgrave abaixo de 45Hz cai 14dB/oitava (rumble)
-          var sub = fr < 45 ? -14 * Math.log(45 / fr) / Math.LN2 : 0;
-          ax.tilt[i] = s.tilt * Math.log(fr / 1000) / Math.LN2 + sub;
-          X[i] = u * w;
+        ax = st.ax = { sig: sig, xb: new Float32Array(nb), tb: new Float32Array(nb), col: new Int32Array(nb),
+          k0: new Int32Array(W), k1: new Int32Array(W), ia: new Int32Array(W), fr: new Float32Array(W) };
+        for (k = 0; k < nb; k++) {
+          var fk = k * binHz;
+          ax.xb[k] = espU(fk, nyq, binHz, s.escala) * w;
+          // a raia 0 (DC) fica no chão, como a dele: a curva nasce no canto de baixo
+          ax.tb[k] = k === 0 ? -1000 : s.tilt * Math.log2(fk / 1000);
+          ax.col[k] = Math.min(W - 1, Math.floor(ax.xb[k] * dpr));
         }
-        st.grade = null;
+        for (i = 0; i < W; i++) { ax.k0[i] = -1; ax.k1[i] = -1; }
+        for (k = 0; k < nb; k++) { var cc = ax.col[k]; if (ax.k0[cc] < 0) ax.k0[cc] = k; ax.k1[cc] = k; }
+        /* a linha vai raia a raia até 3 raias por pixel (a serrilha sai suave pelo
+           antisserrilhado, como a dele); passou disso, mínimo e máximo da coluna */
+        ax.denso = new Uint8Array(nb);
+        for (k = 0; k < nb; k++) { var c0 = ax.col[k]; ax.denso[k] = ax.k1[c0] - ax.k0[c0] + 1 > 3 ? 1 : 0; }
+        var kk = 0;
+        for (i = 0; i < W; i++) {
+          if (ax.k0[i] >= 0) continue;
+          var xc = (i + 0.5) / dpr;
+          while (kk < nb - 2 && ax.xb[kk + 1] < xc) kk++;
+          ax.ia[i] = kk;
+          var xa = ax.xb[kk], xbb = ax.xb[kk + 1];
+          ax.fr[i] = xbb > xa ? Math.max(0, Math.min(1, (xc - xa) / (xbb - xa))) : 0;
+        }
+        // grade e rótulos
+        var linhas = [], rots = [];
+        var lista = s.escala === 'lin' ? [] : ESP_GRADE;
+        if (s.escala === 'lin') for (var fq = 1000; fq < nyq; fq += 1000) { lista.push(fq); }
+        for (i = 0; i < lista.length; i++) {
+          if (lista[i] >= nyq) continue;
+          var gx = espU(lista[i], nyq, binHz, s.escala) * w;
+          linhas.push(dpr === 1 ? Math.floor(gx) + 0.5 : Math.round(gx * dpr) / dpr);
+          var fv = lista[i];
+          var rotula = s.escala === 'lin' ? fv % 5000 === 0 : (fv === 100 || fv === 1000 || fv === 10000);
+          if (rotula) rots.push([gx, fv >= 1000 ? (fv / 1000) + 'kHz' : fv + 'Hz']);
+        }
+        ax.linhas = linhas; ax.rots = rots;
+        st.pw = null; st.pwA = null; st.pwV = null;
       }
-      // janela vertical medida contra o vídeo do MiniMeters: -66 a -14 dBFS
-      var piso = -66, span = 52;
-      var tUp = 0.016, tDn = 0.06 + s.smooth * 0.86;
-      var kUp = 1 - Math.exp(-dt / tUp), kDn = 1 - Math.exp(-dt / tDn);
-      var maxV = 0, maxI = 0;
-      for (var cc = 0; cc < 2; cc++) {
-        var src = cc === 0 ? dbL : dbR, alvo = cc === 0 ? v : v2;
-        for (i = 0; i < N; i++) {
-          var lo = ax.lo[i], hi = ax.hi[i], dbv;
-          if (hi > lo + 1) { dbv = -200; for (var q = lo; q <= hi; q++) if (src[q] > dbv) dbv = src[q]; }
-          else {
-            /* entre duas raias (o grave, onde há mais ponto que raia): Catmull-Rom em
-               vez de reta. A reta deixava um bico em cada raia e o grave saía poligonal. */
-            var p0 = ax.pos[i], i0 = p0 | 0; if (i0 > nb - 3) i0 = nb - 3; if (i0 < 1) i0 = 1;
-            var f = p0 - i0, ya = src[i0 - 1], yb = src[i0], yc = src[i0 + 1], yd = src[i0 + 2];
-            dbv = yb + 0.5 * f * (yc - ya + f * (2 * ya - 5 * yb + 4 * yc - yd + f * (3 * (yb - yc) + yd - ya)));
-          }
-          var nv = (dbv + ax.tilt[i] - piso) / span;
-          if (nv < 0) nv = 0; else if (nv > 0.86) nv = 0.86 + 0.14 * Math.tanh((nv - 0.86) / 0.14);
-          raw[i] = nv;
-        }
-        // 1-2-1 entre vizinhos: tira o dente de um pixel só, mantém a altura
-        var ant = raw[0];
-        for (i = 0; i < N; i++) {
-          var atual = raw[i], prox = i < N - 1 ? raw[i + 1] : atual;
-          var sm = (ant + 2 * atual + prox) * 0.25;
-          ant = atual;
-          alvo[i] += (sm - alvo[i]) * (sm > alvo[i] ? kUp : kDn);
-          // a nota do canto procura só a região musical: pico em 11kHz é chimbal, não nota
-          if (cc === 0 && alvo[i] > maxV && ax.hz[i] >= 30 && ax.hz[i] <= 5000) { maxV = alvo[i]; maxI = i; }
-        }
+      var xb = ax.xb, tb = ax.tb;
+
+      /* MÉDIA NA POTÊNCIA, como a dele: 0,9 a cada 256 amostras. Em 48 kHz dá τ = 51 ms.
+         Vira uma constante de tempo pra valer igual a 60 ou a 120 quadros. */
+      var sm = Math.max(0, Math.min(0.995, +s.smooth || 0));
+      var sr = binHz * n, tau = sm > 0 ? 256 / (sr * -Math.log(sm)) : 0;
+      var aK = tau > 0 ? Math.exp(-Math.min(0.25, dt) / tau) : 0, bK = 1 - aK;
+      var dbS = st.dbS && st.dbS.length === nb ? st.dbS : (st.dbS = new Float32Array(nb));
+      function media(src, nomePw) {
+        var pw = st[nomePw];
+        if (!pw || pw.length !== nb) { pw = st[nomePw] = new Float32Array(nb); }
+        for (var q = 0; q < nb; q++) pw[q] = pw[q] * aK + Math.pow(10, src[q] * 0.1) * bK;
+        return pw;
+      }
+      var pwM = media(dbM, 'pw');
+      for (k = 0; k < nb; k++) dbS[k] = pwM[k] > 1e-20 ? 10 * Math.log10(pwM[k]) : -200;
+
+      var lw = CV.lw(m, 1.7), yChao = h + lw + 1;
+      function yDe(db, kq) {
+        var v = (db + tb[kq] - ESP_PISO) / ESP_FAIXA;
+        if (v <= 0) return yChao;
+        if (v >= 1) return lw * 0.5;
+        return h - v * h;
       }
 
-      var topo = h * 0.96;
-      for (i = 0; i < N; i++) { Y[i] = h - v[i] * topo; Y2[i] = h - v2[i] * topo; Yf[i] = h - Math.min(v[i], v2[i]) * topo; }
-      var corL = corMedidor(m, 0, 0.88), corR = corMedidor(m, 1, 0.55), sombra = CV.corRGB(m, 2) || misturaRgb(corL, [0, 0, 0], 0.6);
-
-      /* BRILHO NA BATIDA: cada faixa se compara com a própria média lenta, e o que
-         passou dela acende. A v2.0 pintava isso em 240 a 640 faixas, e a borda entre
-         uma e outra virava listra vertical. Agora são 48 paradas de um degradê só:
-         a luz escorre de uma faixa pra outra, sem degrau. */
-      var NB = 48, lz = null, algum = 0, b;
-      if (s.acende) {
-        var med = st.med || (st.med = new Float32Array(NB));
-        lz = st.lz || (st.lz = new Float32Array(NB));
-        var kM = 1 - Math.exp(-dt / 0.6), kL = Math.exp(-dt / 0.22);
-        for (b = 0; b < NB; b++) {
-          var ia = (b * N / NB) | 0, ib = ((b + 1) * N / NB) | 0, top = 0;
-          for (i = ia; i < ib; i++) if (v[i] > top) top = v[i];
-          var sobe = Math.max(0, top - med[b]);
-          med[b] += (top - med[b]) * kM;
-          lz[b] = Math.max(lz[b] * kL, Math.min(1, sobe * 4 * Math.pow(top, 1.2)));
-          if (lz[b] > 0.04) algum = 1;
-        }
-      }
-
-      /* PREENCHIMENTO PELA ALTURA, o do MiniMeters: debaixo de cada trecho a cor vai
-         da sombra (curva baixa) ao vivo (curva alta), então o que toca forte acende e
-         o resto fica escuro. Depois um degradê APAGA o preenchimento em direção ao
-         rodapé (destination-out: até ali o painel só tem ele). A v2.0 era um bloco
-         rosa de 30% a 92% com listras por cima; aqui o mais aceso fica em 38%. */
-      if (s.estilo !== 'fft') {
-        var forte = s.estilo === 'barras', tmpC = st.tmpC || (st.tmpC = [0, 0, 0]);
-        var gh = c.createLinearGradient(0, 0, w, 0);
-        for (b = 0; b < NB; b++) {
-          var ja = (b * N / NB) | 0, jb = ((b + 1) * N / NB) | 0, alto = 0;
-          for (i = ja; i < jb; i++) { var mn = forte ? v[i] : v[i] < v2[i] ? v[i] : v2[i]; if (mn > alto) alto = mn; }
-          var u2 = Math.min(1, alto / 0.86);
-          u2 = Math.round(u2 * u2 * 40) / 40;
-          var la = lz && lz[b] > 0.03 ? Math.round(lz[b] * 20) / 20 : 0;
-          var a2 = forte ? 0.32 + 0.5 * u2 + 0.18 * la : 0.07 + 0.31 * u2 + 0.24 * la;
-          gh.addColorStop((b + 0.5) / NB, CV.rgba(misturaRgb(sombra, corL, Math.min(1, u2 + la * 0.6), tmpC), a2));
-        }
-        c.beginPath();
-        CV.curva(c, X, forte ? Y : Yf, N);   // Barras não tem a curva da direita: enche até a da esquerda
-        c.lineTo(w, h); c.lineTo(0, h); c.closePath();
-        c.fillStyle = gh;
-        c.fill();
-        var fsig = h + '|' + forte;
-        if (st.fsig !== fsig) {
-          var gv = c.createLinearGradient(0, 0, 0, h);
-          gv.addColorStop(0, 'rgba(0,0,0,0)'); gv.addColorStop(0.4, 'rgba(0,0,0,0.15)');
-          gv.addColorStop(1, forte ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.8)');
-          st.gv = gv; st.fsig = fsig;
-        }
-        c.globalCompositeOperation = 'destination-out';
-        c.fillStyle = st.gv;
-        c.fillRect(0, 0, w, h);
-        c.globalCompositeOperation = 'source-over';
-      }
-
-      // grade discreta: décadas com rótulo, intermediárias quase sumidas
-      var gk = st.grade;
-      if (!gk) {
-        gk = st.grade = { fraca: [], forte: [] };
-        var marcas = [[50, 0], [100, '100'], [200, 0], [500, 0], [1000, '1k'], [2000, 0], [5000, 0], [10000, '10k']];
-        for (var g2 = 0; g2 < marcas.length; g2++) {
-          var fq = marcas[g2][0], gx = -1;
-          for (var q2 = 0; q2 < N - 1; q2++) if (ax.hz[q2] <= fq && ax.hz[q2 + 1] >= fq) { gx = X[q2] + (X[q2 + 1] - X[q2]) * (fq - ax.hz[q2]) / (ax.hz[q2 + 1] - ax.hz[q2]); break; }
-          if (gx < 0) continue;
-          gx = Math.round(gx) + 0.5;
-          if (marcas[g2][1]) gk.forte.push([gx, marcas[g2][1]]); else gk.fraca.push(gx);
-        }
-      }
+      // 1) grade: atrás de tudo, com a linha aberta atrás do rótulo
+      var mmTema = CV.themeOf(m) === 'minimeters' && !(s.cmap && s.cmap !== 'auto') && !(CV.cmap0 && CV.cmap0 !== 'auto');
+      var tinta = mmTema ? '#4f606e' : CV.gridInk(m, CV.isLight(m) ? 0.16 : 0.2);
       c.lineWidth = 1;
-      c.strokeStyle = CV.gridInk(m, 0.035);
+      c.strokeStyle = tinta;
       c.beginPath();
-      for (i = 0; i < gk.fraca.length; i++) { c.moveTo(gk.fraca[i], 0); c.lineTo(gk.fraca[i], h); }
+      for (i = 0; i < ax.linhas.length; i++) { c.moveTo(ax.linhas[i], 0); c.lineTo(ax.linhas[i], h); }
       c.stroke();
-      c.strokeStyle = CV.gridInk(m, 0.075);
-      c.beginPath();
-      for (i = 0; i < gk.forte.length; i++) { c.moveTo(gk.forte[i][0], 0); c.lineTo(gk.forte[i][0], h); }
-      c.stroke();
-      if (h > 60) for (i = 0; i < gk.forte.length; i++) rotulo(c, m, gk.forte[i][1], gk.forte[i][0] + 4, CV.fs(m, 9) + 3, 'left', 0.34);
-
-      // o traço da esquerda clareia onde a faixa acendeu
-      var luzL = null;
-      if (algum) {
-        var ext = CV.isLight(m) ? [0, 0, 0] : [255, 255, 255];
-        luzL = c.createLinearGradient(0, 0, w, 0);
-        var tmpL = st.tmpL || (st.tmpL = [0, 0, 0]);
-        for (b = 0; b < NB; b++) luzL.addColorStop((b + 0.5) / NB, CV.rgba(misturaRgb(corL, ext, Math.round(lz[b] * 20) / 20 * 0.5, tmpL), 1));
+      if (h > 50) {
+        c.font = CV.font(m, 10, '600');
+        c.textAlign = 'center';
+        var fsz = CV.fs(m, 10), ty = Math.round(fsz + 4);
+        for (i = 0; i < ax.rots.length; i++) {
+          var r0 = ax.rots[i], tw0 = c.measureText(r0[1]).width;
+          c.clearRect(r0[0] - tw0 / 2 - 4, 1, tw0 + 8, fsz + 8);
+          c.fillStyle = tinta;
+          c.fillText(r0[1], r0[0], ty);
+        }
       }
 
-      // as duas curvas: direita por baixo, esquerda por cima
+      /* 2) barras de cor, uma por coluna de pixel de dispositivo.
+         ALTURA = a linha (média); COR = o instante, sem média. Medido no vídeo: no tom
+         que entra a barra já acende inteira enquanto a linha ainda sobe, e no tom que
+         sai ela apaga em 3 quadros enquanto a linha desce em 20.
+         A cor de cada coluna vai numa fileira de 1 px (W x 1) e o contorno das barras
+         sai num fill só, com essa fileira de padrão repetido pra baixo: a cor muda
+         contínua, como a dele, e o desenho custa um polígono em vez de 1.400 retângulos. */
+      if (s.estilo !== 'fft') {
+        var rp = espRampa(m), NQ = rp.NQ, U0 = rp.U0, esc = (NQ - 1) / (rp.U1 - rp.U0), rgbR = rp.rgb;
+        var bq = st.bq && st.bq.length === W ? st.bq : (st.bq = new Int16Array(W));
+        var bh = st.bh && st.bh.length === W ? st.bh : (st.bh = new Float32Array(W));
+        var fil = st.fil;
+        if (!fil || fil.width !== W) {
+          fil = st.fil = document.createElement('canvas'); fil.width = W; fil.height = 1;
+          st.filC = fil.getContext('2d'); st.filI = st.filC.createImageData(W, 1);
+        }
+        var px4 = st.filI.data, alguma = false;
+        for (i = 0; i < W; i++) {
+          var u, uS, k0 = ax.k0[i], o4 = i * 4;
+          if (k0 >= 0) {
+            /* altura = o máximo (é onde a linha passa); cor = a MÉDIA das raias da coluna.
+               As barras dele são uma por raia e, no agudo, várias dividem o mesmo pixel e
+               se misturam: com o máximo o nosso agudo saía 40% mais aceso que o dele. */
+            var soma = 0, nk = 0; uS = -9;
+            for (k = k0; k <= ax.k1[i]; k++) {
+              var uk = (dbM[k] + tb[k] - ESP_PISO) / ESP_FAIXA, us = (dbS[k] + tb[k] - ESP_PISO) / ESP_FAIXA;
+              soma += uk < U0 ? U0 : uk; nk++; if (us > uS) uS = us;
+            }
+            u = soma / nk;
+          } else {
+            var ia = ax.ia[i], fa = ax.fr[i];
+            var ua = (dbM[ia] + tb[ia] - ESP_PISO) / ESP_FAIXA, ub = (dbM[ia + 1] + tb[ia + 1] - ESP_PISO) / ESP_FAIXA;
+            var sa = (dbS[ia] + tb[ia] - ESP_PISO) / ESP_FAIXA, sb = (dbS[ia + 1] + tb[ia + 1] - ESP_PISO) / ESP_FAIXA;
+            u = ua + (ub - ua) * fa; uS = sa + (sb - sa) * fa;
+          }
+          if (u < rp.uVis || uS <= 0) { bq[i] = -1; bh[i] = 0; px4[o4 + 3] = 0; continue; }
+          var qf = (Math.min(u, rp.U1) - U0) * esc; if (qf < 0) qf = 0;
+          var q0 = qf | 0; if (q0 > NQ - 2) q0 = NQ - 2;
+          var fq = Math.min(1, qf - q0), j3 = q0 * 3;
+          px4[o4] = rgbR[j3] + (rgbR[j3 + 3] - rgbR[j3]) * fq;
+          px4[o4 + 1] = rgbR[j3 + 1] + (rgbR[j3 + 4] - rgbR[j3 + 1]) * fq;
+          px4[o4 + 2] = rgbR[j3 + 2] + (rgbR[j3 + 5] - rgbR[j3 + 2]) * fq;
+          px4[o4 + 3] = 255;
+          bq[i] = Math.round(qf); bh[i] = Math.min(1, uS) * h; alguma = true;
+        }
+        if (alguma) {
+          st.filC.putImageData(st.filI, 0, 0);
+          var pad = c.createPattern(fil, 'repeat-y');
+          if (pad) {
+            // um pixel da fileira = um pixel de dispositivo (o contexto já vem escalado pelo dpr)
+            if (dpr !== 1 && pad.setTransform && typeof DOMMatrix !== 'undefined') pad.setTransform(st.padM || (st.padM = new DOMMatrix([1 / dpr, 0, 0, 1, 0, 0])));
+            c.beginPath();
+            c.moveTo(0, h);
+            for (i = 0; i < W; i++) c.lineTo((i + 0.5) / dpr, h - bh[i]);
+            c.lineTo(w, h); c.closePath();
+            var suave = c.imageSmoothingEnabled;
+            c.imageSmoothingEnabled = false;
+            c.fillStyle = pad; c.fill();
+            c.imageSmoothingEnabled = suave;
+          }
+        }
+      }
+
+      /* 3) a linha, reta de raia em raia. No agudo várias raias caem na mesma coluna
+         de pixel: vai o mínimo e o máximo dela, que dá a mesma serrilha com menos
+         ponto (2.048 raias viram ~1.100 pontos numa barra de 720 px em Retina). */
+      var denso = ax.denso;
+      function traca(db) {
+        var colAnt = -1, yMin = 0, yMax = 0, yUlt = 0, temCol = false;
+        c.beginPath();
+        c.moveTo(xb[0], yDe(db[0], 0));
+        for (var q = 1; q < nb; q++) {
+          var yq = yDe(db[q], q), cq = ax.col[q];
+          var junto = denso[q] && q + 1 < nb && ax.col[q + 1] === cq;
+          if ((cq === colAnt && denso[q]) || junto) {
+            if (cq !== colAnt) { if (temCol) solta(); colAnt = cq; yMin = yMax = yq; temCol = true; }
+            else { if (yq < yMin) yMin = yq; if (yq > yMax) yMax = yq; }
+            continue;
+          }
+          if (temCol) { solta(); temCol = false; }
+          colAnt = cq;
+          c.lineTo(xb[q], yq); yUlt = yq;
+        }
+        if (temCol) solta();
+        function solta() {
+          var xc2 = (colAnt + 0.5) / dpr;
+          if (Math.abs(yUlt - yMin) < Math.abs(yUlt - yMax)) { c.lineTo(xc2, yMin); if (yMax !== yMin) c.lineTo(xc2, yMax); yUlt = yMax; }
+          else { c.lineTo(xc2, yMax); if (yMax !== yMin) c.lineTo(xc2, yMin); yUlt = yMin; }
+        }
+        c.stroke();
+      }
       c.lineJoin = 'round';
-      c.lineWidth = 1.15;
+      c.lineWidth = lw;
       if (s.estilo !== 'barras') {
-        c.strokeStyle = CV.rgba(corR, 0.8);
-        c.beginPath(); CV.curva(c, X, Y2, N); c.stroke();
+        // azul (side, ou R) por baixo; vermelho (mid, ou L) por cima
+        if (dbA) {
+          var pwA = media(dbA, 'pwA'), da = st.da && st.da.length === nb ? st.da : (st.da = new Float32Array(nb));
+          for (k = 0; k < nb; k++) da[k] = pwA[k] > 1e-20 ? 10 * Math.log10(pwA[k]) : -200;
+          c.strokeStyle = CV.rgba(corMedidor(m, 1, 0.55), 1); traca(da);
+        }
+        var dv = dbS;
+        if (dbV !== dbM) {
+          var pwV = media(dbV, 'pwV');
+          dv = st.dv && st.dv.length === nb ? st.dv : (st.dv = new Float32Array(nb));
+          for (k = 0; k < nb; k++) dv[k] = pwV[k] > 1e-20 ? 10 * Math.log10(pwV[k]) : -200;
+        }
+        c.strokeStyle = CV.rgba(corMedidor(m, 0, 0.88), 1);
+        traca(dv);
       }
-      c.strokeStyle = luzL || CV.rgba(corL, s.estilo === 'barras' ? 0.95 : 1);
-      if (luzL) c.lineWidth = 1.4;
-      c.beginPath(); CV.curva(c, X, Y, N); c.stroke();
 
-      // leitura: no hover segue o mouse; parado, só a nota do pico, pequena no canto
+      /* 4) leitura. Parado: no pico do espectro bruto (sem tilt), colada nele, como a
+         dele. Com o mouse em cima: na frequência do mouse. Frequência e nível pela
+         parábola nas 3 raias do pico (o 1 kHz dele lê 999.96Hz, -6.01dB). */
+      if (h < 46) return;
+      var kp = -1, fr2, lv, xP, yP;
       if (m.mouse && m.mouse.over) {
-        var ri = Math.max(0, Math.min(N - 1, Math.round(m.mouse.x / w * (N - 1))));
-        var fr2 = ax.hz[ri], bin2 = Math.max(0, Math.min(nb - 1, Math.round(fr2 / binHz)));
-        c.strokeStyle = CV.gridInk(m, 0.22); c.lineWidth = 1;
-        c.beginPath(); c.moveTo(Math.round(X[ri]) + 0.5, 0); c.lineTo(Math.round(X[ri]) + 0.5, h); c.stroke();
-        var txt = (dbL[bin2] > -119 ? dbL[bin2].toFixed(1) : '-∞') + ' dB  ' + CV.fmtHz(fr2) + '  ' + CV.noteCents(fr2);
-        c.font = CV.font(m, 9.5);
-        var tw = c.measureText(txt).width, fsz = CV.fs(m, 9.5);
-        var tx = Math.min(w - tw - 10, Math.max(6, X[ri] + 8)), ty = Math.max(fsz * 2.6, Math.min(h - 6, m.mouse.y));
-        c.fillStyle = CV.isLight(m) ? 'rgba(250,248,242,0.92)' : 'rgba(10,10,12,0.78)';
-        c.fillRect(tx - 5, ty - fsz - 4, tw + 10, fsz + 8);
-        c.fillStyle = CV.isLight(m) ? '#141412' : '#ececec';
-        c.textAlign = 'left';
-        c.fillText(txt, tx, ty);
-      } else if (maxV > 0.12 && h > 70) {
-        // a nota do pico mora na segunda linha: na primeira ela batia no rótulo do 10k
-        var fp = ax.hz[maxI];
-        rotulo(c, m, CV.noteName(fp) + '  ' + CV.fmtHz(fp), w - 8, CV.fs(m, 9) * 2 + 7, 'right', 0.45);
+        var um = Math.max(0, Math.min(1, m.mouse.x / w)), alvoX = um * w;
+        kp = 1; while (kp < nb - 2 && xb[kp + 1] < alvoX) kp++;
+        if (kp < nb - 2 && Math.abs(xb[kp + 1] - alvoX) < Math.abs(xb[kp] - alvoX)) kp++;
+        c.strokeStyle = CV.gridInk(m, 0.3); c.lineWidth = 1;
+        c.beginPath(); c.moveTo(Math.round(xb[kp]) + 0.5, 0); c.lineTo(Math.round(xb[kp]) + 0.5, h); c.stroke();
+      } else {
+        var top = -1e9;
+        for (k = 1; k < nb - 1; k++) if (dbS[k] > top) { top = dbS[k]; kp = k; }
+        if (top < -120) return;
       }
+      var ya = dbS[kp - 1], yb2 = dbS[kp], yc = dbS[Math.min(nb - 1, kp + 1)], den = ya - 2 * yb2 + yc;
+      var dl2 = Math.abs(den) > 1e-9 ? Math.max(-0.5, Math.min(0.5, 0.5 * (ya - yc) / den)) : 0;
+      fr2 = (kp + dl2) * binHz; lv = yb2 - 0.25 * (ya - yc) * dl2;
+      xP = espU(fr2, nyq, binHz, s.escala) * w;
+      yP = Math.max(0, Math.min(h, yDe(lv - tb[kp] + s.tilt * Math.log2(Math.max(binHz * 0.5, fr2) / 1000), kp)));
+      var txt = CV.leituraMM(lv, fr2);
+      c.font = CV.font(m, 11, '700');
+      var fz = CV.fs(m, 11), tw = c.measureText(txt).width, padX = Math.round(fz * 0.55), bw = tw + padX * 2, bhh = Math.round(fz * 2.1);
+      var bx = Math.max(2, Math.min(w - bw - 2, xP + 2)), by = Math.max(2, Math.min(h - bhh - 2, yP));
+      c.fillStyle = CV.isLight(m) ? 'rgba(250,248,242,0.94)' : 'rgba(32,33,36,0.94)';
+      c.fillRect(bx, by, bw, bhh);
+      c.fillStyle = CV.isLight(m) ? '#141412' : '#ffffff';
+      c.textAlign = 'left';
+      c.fillText(txt, bx + padX, by + bhh * 0.5 + fz * 0.36);
     }
   });
 
   /* ================= ONDA ================= */
-  /* TRÊS BANDAS EM CAMADAS, como a onda multibanda do MiniMeters: o grave por trás,
-     o médio no meio, o agudo na frente, cada um com a própria altura. A v2.0 pintava
-     uma cor por coluna a partir do "brilho" do som e a faixa virava ruído colorido.
-     Agora a cor quer dizer uma coisa só (qual banda) e a forma é lisa. */
-  var ONDA_BANDA = { lo: [253, 86, 72], mid: [104, 211, 116], hi: [77, 169, 252] };
+  /* v2.3: A MULTIBANDA DO MINIMETERS DE VERDADE, medida no vídeo com a varredura do
+     sinal de teste. Lá a onda é UMA forma só, e a cor de cada coluna é a mistura das
+     três bandas: 50 Hz sai vermelho, 170 Hz laranja, 270 Hz amarelo, 1 kHz verde,
+     1,7 kHz ciano e do 4 kHz pra cima azul; ruído rosa dá azul claro. O modelo que
+     bate (erro de 4 em 255 por canal): filtro de 1 polo em 152 Hz e 1.908 Hz, pico de
+     cada banda elevado a 2,2, mistura de três cores e normaliza pelo canal mais forte.
+     A v2.2 empilhava as três bandas em camadas, o que ele não faz. Rola 2x mais rápido
+     (345 px/s em Retina: no beat de 90 BPM do sinal, um kick a cada 230 px) e vem com
+     um canal só, que nem o dele. */
+  var ONDA_MM = { fL: 152, fH: 1908, p: 2.2, lo: [388, 93, 94], mid: [14, 134, 17], hi: [0, 129, 298] };
+  // cor da multibanda dele a partir do pico de cada banda (devolve rgb 0..255)
+  CV.corMultibanda = function (pLo, pMid, pHi, o) {
+    var wl = Math.pow(pLo, ONDA_MM.p), wm = Math.pow(pMid, ONDA_MM.p), wh = Math.pow(pHi, ONDA_MM.p);
+    var r = wl * ONDA_MM.lo[0] + wm * ONDA_MM.mid[0] + wh * ONDA_MM.hi[0];
+    var g = wl * ONDA_MM.lo[1] + wm * ONDA_MM.mid[1] + wh * ONDA_MM.hi[1];
+    var b = wl * ONDA_MM.lo[2] + wm * ONDA_MM.mid[2] + wh * ONDA_MM.hi[2];
+    var k = 255 / Math.max(r, g, b, 1e-12);
+    o = o || [0, 0, 0]; o[0] = r * k; o[1] = g * k; o[2] = b * k;
+    return o;
+  };
   CV.register('wavescroll', {
     name: 'Onda', group: 'Estúdio', buffered: true, desc: 'A forma de onda passando, em três bandas, um canal por faixa',
-    defaults: { ch1: 'l', ch2: 'r', cor: 'auto', speed: 1, sens: 1, tamanho: 'encher', cmap: 'auto' },
+    defaults: { ch1: 'l', ch2: 'off', cor: 'auto', speed: 1, sens: 1, tamanho: 'encher', cmap: 'auto' },
     schema: [
       { k: 'ch1', label: 'Canal 1', type: 'seg', opts: [['l', 'Esq'], ['r', 'Dir'], ['m', 'Mid'], ['s', 'Side']], def: 'l' },
-      { k: 'ch2', label: 'Canal 2', type: 'seg', opts: [['off', 'Off'], ['l', 'Esq'], ['r', 'Dir'], ['m', 'Mid'], ['s', 'Side']], def: 'r' },
+      { k: 'ch2', label: 'Canal 2', type: 'seg', opts: [['off', 'Off'], ['l', 'Esq'], ['r', 'Dir'], ['m', 'Mid'], ['s', 'Side']], def: 'off' },
       { k: 'tamanho', label: 'Tamanho', type: 'seg', opts: [['encher', 'Encher'], ['real', 'Nível real']], def: 'encher' },
       { k: 'cor', label: 'Cor', type: 'seg', opts: [['auto', 'Do tema'], ['banda', 'Bandas'], ['fixa', 'Uma cor'], ['mapa', 'Mapa']], def: 'auto' },
       { k: 'speed', label: 'Rolagem', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1 },
@@ -1049,7 +1212,7 @@
       var chans = [s.ch1];
       if (s.ch2 && s.ch2 !== 'off') chans.push(s.ch2);
       var lanes = chans.length;
-      var dx = CV.passo(m, 1.4 * s.speed * (m.dpr || 1), dt);
+      var dx = CV.passo(m, 2.875 * s.speed * (m.dpr || 1), dt);   // 172,5 px de tela por segundo
       st._dtA = (st._dtA || 0) + dt;
       if (dx >= 1) {
         var dtCol = Math.min(0.1, st._dtA); st._dtA = 0;
@@ -1058,11 +1221,10 @@
         var H = buf.height, laneH = H / lanes, sr = d.sr || 48000;
         var L = d.timeL, R = d.timeR, n = L.length;
         var fresh = Math.min(n, Math.max(48, Math.round(sr * dtCol)));
-        var aLo = Math.exp(-2 * Math.PI * 220 / sr), aHi = Math.exp(-2 * Math.PI * 2400 / sr);
         var modo = s.cor === 'auto' ? (CV.themeOf(m) === 'minimeters' ? 'banda' : 'tema') : s.cor;
+        var aLo = Math.exp(-2 * Math.PI * (modo === 'banda' ? ONDA_MM.fL : 220) / sr), aHi = Math.exp(-2 * Math.PI * (modo === 'banda' ? ONDA_MM.fH : 2400) / sr);
         var cLo, cMid, cHi, cUma;
-        if (modo === 'banda') { cLo = CV.rgba(ONDA_BANDA.lo, 1); cMid = CV.rgba(ONDA_BANDA.mid, 0.92); cHi = CV.rgba(ONDA_BANDA.hi, 0.92); }
-        else if (modo === 'tema') {
+        if (modo === 'tema') {
           var base = corMedidor(m, 0);
           cLo = CV.rgba(base, 0.3); cMid = CV.rgba(base, 0.58); cHi = CV.rgba(base, 0.95);
         } else if (modo === 'fixa') cUma = CV.rgba(corMedidor(m, 0), 0.9);
@@ -1075,20 +1237,26 @@
           for (var cx = 0; cx < dx; cx++) {
             var a0 = n - fresh + Math.floor(cx * porCol), a1 = n - fresh + Math.floor((cx + 1) * porCol);
             if (a1 <= a0) a1 = a0 + 1;
-            var pk = 0, pMid = 0, pHi = 0, flo = fs.lo, fhi = fs.hi;
+            var pk = 0, pLo = 0, pMid = 0, pHi = 0, flo = fs.lo, fhi = fs.hi;
             for (var i = a0; i < a1; i++) {
               var a = L[i], b = R[i];
               var smp = ch === 'l' ? a : ch === 'r' ? b : ch === 'm' ? (a + b) * 0.5 : (a - b) * 0.5;
               flo = smp + (flo - smp) * aLo;
               fhi = smp + (fhi - smp) * aHi;
-              // grave = abaixo de 220Hz, médio = 220 a 2400Hz, agudo = o resto
-              var vm = fhi - flo, vh = smp - fhi, va = smp < 0 ? -smp : smp;
+              // grave = abaixo do 1º corte, médio = entre os dois, agudo = o resto
+              var vl = flo < 0 ? -flo : flo, vm = fhi - flo, vh = smp - fhi, va = smp < 0 ? -smp : smp;
               if (vm < 0) vm = -vm; if (vh < 0) vh = -vh;
-              if (va > pk) pk = va; if (vm > pMid) pMid = vm; if (vh > pHi) pHi = vh;
+              if (va > pk) pk = va; if (vl > pLo) pLo = vl; if (vm > pMid) pMid = vm; if (vh > pHi) pHi = vh;
             }
             fs.lo = flo; fs.hi = fhi;
             var px = x + cx;
-            if (modo === 'banda' || modo === 'tema') {
+            if (modo === 'banda') {
+              // uma forma só, na cor da mistura das bandas (a multibanda dele)
+              var cm = CV.corMultibanda(pLo, pMid, pHi, st.cmb || (st.cmb = [0, 0, 0]));
+              var hb = Math.min(1, pk * g) * amp;
+              bc.fillStyle = 'rgb(' + (cm[0] | 0) + ',' + (cm[1] | 0) + ',' + (cm[2] | 0) + ')';
+              bc.fillRect(px, mid - hb, 1, hb * 2 + 1);
+            } else if (modo === 'tema') {
               var hl = Math.min(1, pk * g) * amp, hm = Math.min(1, pMid * g * 1.1) * amp, hh = Math.min(1, pHi * g * 0.9) * amp;
               bc.fillStyle = cLo; bc.fillRect(px, mid - hl, 1, hl * 2 + 1);
               bc.fillStyle = cMid; bc.fillRect(px, mid - hm, 1, hm * 2 + 1);
@@ -1113,6 +1281,62 @@
   /* Duas barras (CURTO e MÉDIO), régua à esquerda e o número do LUFS médio ao lado.
      O bloco sólido de cor saiu: o número fica na cor do medidor, grande, sem caixa.
      A leitura é a mesma da v2.0. */
+  /* LOUDNESS NO TEMA MINIMETERS (v2.3, medido no vídeo de 5/nov). O dele tem régua de
+     0 a -60 dB (rótulos 0, 6, 12, 24, 36 e 50), duas barras finas de PICO, L e R, e uma
+     larga com o CURTO (3 s), com a etiqueta do número do curto colada nela. Conferido em
+     8 instantes: o número dele é o nosso lufsS na casa decimal (-14.3, -13.7, -15.8,
+     -19.7...). O médio (integrado) que a etiqueta mostrava chegava a 7 LU de diferença.
+     A fina é o maior das últimas 256 amostras, sem segurar: no kick ela pula com a fase
+     do grave, como a dele (erro médio de 1,7 dB contra o vídeo, quadro a quadro).
+     Medidas em px de tela, fixas como a interface dele. */
+  var LOUD_MM = { trilho: '#1f252b', zero: '#37638b', texto: '#003285' };
+  function loudMM(m, d, c, w, h, vS) {
+    var cor = CV.rgba(corMedidor(m, 0, 0.72), 1);
+    var fr = 9.25, topo = 9.75, base = h - 1;
+    var yDb = function (v) { return topo + Math.min(1, Math.max(0, -v / 60)) * (base - topo); };
+    c.font = '700 ' + fr + 'px "SF Mono", ui-monospace, monospace';
+    c.textAlign = 'right'; c.fillStyle = cor;
+    var ult = -1e9, marcas = [0, 6, 12, 24, 36, 50], i;
+    for (i = 0; i < marcas.length; i++) {
+      var y = yDb(-marcas[i]);
+      if (y - ult < fr * 1.2 || y > h - fr * 0.4) continue;   // painel baixo: pula o rótulo que encostaria
+      ult = y;
+      c.fillText(String(marcas[i]), 21.5, y + fr * 0.36);
+      c.fillRect(25.5, Math.round(y * 2) / 2 - 0.5, 4, 1);   // o tracinho dele é uma risca de 8 px de dispositivo
+    }
+    // trilhos, com a marca de 0 dB
+    c.fillStyle = LOUD_MM.trilho;
+    c.fillRect(34, 0, 13, h); c.fillRect(52, 0, 13, h);
+    var y0 = Math.round(yDb(0)) - 1;
+    c.fillStyle = LOUD_MM.zero;
+    c.fillRect(36, y0, 4, 1); c.fillRect(42, y0, 4, 1); c.fillRect(54, y0, 9, 1);
+    // pico de L e de R nas últimas 256 amostras
+    var pL = 0, pR = 0;
+    if (d.ringL && d.ringR && d.wr > 256) {
+      var RM = d.ringL.length - 1, aL = d.ringL, aR = d.ringR;
+      for (var k = d.wr - 256; k < d.wr; k++) {
+        var a = aL[k & RM], b = aR[k & RM];
+        if (a < 0) a = -a; if (b < 0) b = -b;
+        if (a > pL) pL = a; if (b > pR) pR = b;
+      }
+    }
+    var yL = yDb(pL > 1e-7 ? 20 * Math.log10(pL) : -200), yR = yDb(pR > 1e-7 ? 20 * Math.log10(pR) : -200), yS = yDb(vS);
+    c.fillStyle = cor;
+    if (yL < base) c.fillRect(36, yL, 4, base + 1 - yL);
+    if (yR < base) c.fillRect(42, yR, 4, base + 1 - yR);
+    if (yS < base) c.fillRect(54, yS, 9, base + 1 - yS);
+    if (vS <= -69) return;
+    // a etiqueta: "-14.3LUFS", texto azul-marinho sobre o azul do medidor
+    var txt = vS.toFixed(1) + 'LUFS', fe = 12.85;
+    c.font = '700 ' + fe + 'px "SF Mono", ui-monospace, monospace';
+    var tw = c.measureText(txt).width, pe = 3, he = 24;
+    var xe = 66, ye = Math.max(1, Math.min(h - he - 1, yS - 1.25 - he / 2));
+    if (xe + tw + pe * 2 > w - 1) xe = Math.max(0, w - 1 - tw - pe * 2);
+    c.fillStyle = cor; c.fillRect(xe, ye, tw + pe * 2, he);
+    c.fillStyle = LOUD_MM.texto; c.textAlign = 'left';
+    c.fillText(txt, xe + pe, ye + he * 0.5 + fe * 0.36);
+  }
+
   CV.register('loudness', {
     name: 'Loudness', group: 'Estúdio', desc: 'LUFS curto e médio pela norma BS.1770',
     defaults: { alvo: -14, barras: 2, cmap: 'auto' },
@@ -1127,6 +1351,7 @@
       if (!st.sb) { st.sb = []; st.ph = []; st.pt = []; }
       var vM = d.lufsM !== undefined ? d.lufsM : -70, vS = d.lufsS !== undefined ? d.lufsS : -70;
       var vI = d.lufsAvgVal !== undefined ? d.lufsAvgVal : -70;
+      if (CV.themeOf(m) === 'minimeters' && !(m.s && m.s.cmap && m.s.cmap !== 'auto')) { loudMM(m, d, c, w, h, vS); return; }
       if (st.sm === undefined) st.sm = vI;
       st.sm += (vI - st.sm) * (1 - Math.exp(-dt / (vI > st.sm ? 0.09 : 0.45)));
       var LMIN = -50, LMAX = 0, fs = CV.fs(m, 8.5);
@@ -1198,12 +1423,17 @@
     init: function (m) { m.st.wsm = 0; },
     draw: function (m, d, dt, t) {
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
-      CV.fade(m, c, s.trail);
+      var cupula = s.estilo === 'cupula', encher = s.tamanho !== 'real';
+      var mmG = CV.themeOf(m) === 'minimeters' && !(s.cmap && s.cmap !== 'auto');
+      /* no tema MiniMeters cada quadro nasce limpo, como o dele: com o rastro, a cúpula
+         do chimbal ficava na tela entre um chimbal e outro (no vídeo ela só aparece com o
+         chimbal tocando, e no resto do beat fica só a linha do kick em pé) */
+      if (cupula && mmG) c.clearRect(0, 0, w, h); else CV.fade(m, c, s.trail);
       if (!d || !d.timeL) return;
       var L = d.timeL, R = d.timeR, n = Math.min(L.length, R.length), i;
-      var cupula = s.estilo === 'cupula', encher = s.tamanho !== 'real';
-      var padB = Math.max(4, h * 0.04);
+      var padB = cupula && mmG ? 10 : Math.max(4, h * 0.04);   // a raiz dele fica 10 px acima do rodapé
       var cx = w / 2, cy = cupula ? h - padB : h / 2;
+      m.st.raiz = [cx, cy];
       var RR = cupula ? Math.min(w * 0.47, h - padB - 4) : Math.min(w, h) * 0.44;
       /* v2.2 ENCHER: a cúpula vira meia ELIPSE do formato do painel (até 2,8x mais larga
          que alta), a nuvem entra com autoganho e o ponto engorda no grave. Numa barra
@@ -1213,6 +1443,17 @@
         if (cupula) { RY = Math.min(h - padB - 4, w * 0.47 * 1.5); RX = Math.min(w * 0.47, RY * 2.8); }
         else { RY = Math.min(h * 0.44, w * 0.44 * 1.4); RX = Math.min(w * 0.44, RY * 2.4); }
         G = 1.3 * CV.alvoEncher() / (2 * Math.max(0.05, sm.ondaRef));
+      }
+      /* no tema MiniMeters a cúpula é REDONDA e da altura do painel: o canal sozinho tem
+         que sair a 45°, como no vídeo dele (o que passa da largura sai pela borda).
+         E o RAIO É EM dB, 60 dB da raiz até a borda: -12 dBFS num canal só chega a 80%
+         do raio, como a linha dele, e o chimbal baixinho entre um kick e outro vira a
+         cúpula de pontos que aparece no vídeo (no raio linear ele sumia na raiz).
+         No Encher o pico recente sobe pra borda (até 30 dB); no Nível real fica o dele. */
+      var logR = cupula && mmG, offR = 0;
+      if (logR) {
+        RY = h - padB - 1; RX = RY;
+        if (encher) offR = Math.max(0, Math.min(30, -20 * Math.log10(Math.max(1e-4, sm.ondaRef * 1.414))));
       }
       var gS = CV.env(m, 'goG', sm.grave, dt, 0.01, 0.12);
       var sz = s.ponto > 0.05 ? s.ponto : Math.max(0.9, Math.min(1.8, Math.sqrt(w * h) / 150));
@@ -1226,42 +1467,89 @@
         else { c.ellipse(cx, cy, RX, RY, 0, 0, Math.PI * 2); c.moveTo(cx - RX, cy); c.lineTo(cx + RX, cy); }
         c.stroke();
       }
-      var bB = Math.min(1, d.bass * 1.5), bM = Math.min(1, d.mid * 2.2), bH = Math.min(1, d.high * 2.6);
-      var hueBanda = (0 * bB * bB + 120 * bM * bM + 215 * bH * bH) / (bB * bB + bM * bM + bH * bH + 1e-6);
       var corG = s.cor === 'auto' ? (CV.themeOf(m) === 'minimeters' ? 'mapa' : 'tema') : s.cor;
       var gA = CV.corRGB(m, 0), gB = CV.corRGB(m, 1);
       if (corG === 'tema' && !(gA && gB)) corG = 'fixa';
       var CN = 5, AN = 4, bk = m.st._bk;
       if (!bk || bk.length !== CN * AN) { bk = m.st._bk = []; for (i = 0; i < CN * AN; i++) bk.push([]); }
       for (i = 0; i < bk.length; i++) bk[i].length = 0;
-      for (i = 0; i < n; i += step) {
+      var NBR = 25, bkR = m.st._bkR;
+      if (!bkR) { bkR = m.st._bkR = []; for (i = 0; i < NBR * AN; i++) bkR.push([]); }
+      for (i = 0; i < bkR.length; i++) bkR[i].length = 0;
+      /* RGB DO MINIMETERS, ponto a ponto: as mesmas três bandas da onda multibanda
+         (152 Hz e 1.908 Hz, pico ^2,2), com envelope curto de 3 ms. Kick sai vermelho,
+         chimbal azul, os dois juntos rosa, banda larga branco, como no vídeo dele. */
+      var rgbPt = corG === 'mapa', sr2 = d.sr || 48000;
+      var aL2 = Math.exp(-2 * Math.PI * ONDA_MM.fL / sr2), aH2 = Math.exp(-2 * Math.PI * ONDA_MM.fH / sr2), kE = Math.exp(-1 / (sr2 * 0.003));
+      var fl2 = 0, fh2 = 0, el = 0, em = 0, eh = 0, GQ = 4;
+      for (i = 0; i < n; i++) {
         var a = L[i], b = R[i], px, py, cv;
+        if (rgbPt) {
+          var mm2 = (a + b) * 0.5;
+          fl2 = mm2 + (fl2 - mm2) * aL2; fh2 = mm2 + (fh2 - mm2) * aH2;
+          var al2 = fl2 < 0 ? -fl2 : fl2, am2 = fh2 - fl2, ah2 = mm2 - fh2;
+          if (am2 < 0) am2 = -am2; if (ah2 < 0) ah2 = -ah2;
+          el = al2 > el ? al2 : el * kE; em = am2 > em ? am2 : em * kE; eh = ah2 > eh ? ah2 : eh * kE;
+        }
+        if (i % step) continue;
         if (cupula) {
-          var sum = Math.abs(a) + Math.abs(b);
-          if (sum < 1e-5) continue;
-          var pan = (Math.abs(b) - Math.abs(a)) / sum;
-          pan = pan < 0 ? -Math.pow(-pan, 0.45) : Math.pow(pan, 0.45);
+          /* v2.3: GONIÔMETRO de verdade (o "Scaled - Unipolar" dele): mid pra cima, side
+             pro lado, a metade de baixo espelhada pra cima. Mono = linha em pé, um canal só
+             = linha a 45°, fase invertida = deitada no chão. A v2.2 punha o ângulo pelo
+             balanço |R|-|L| e o canal sozinho caía deitado no rodapé. */
+          var sx = (b - a) * 0.7071, my = (a + b) * 0.7071;
+          if (my < 0) { my = -my; sx = -sx; }
+          var rr = Math.sqrt(sx * sx + my * my);
+          if (rr < 1e-5) continue;
           // no Encher a ponta encosta macia na borda (cortar em 1 empilhava uma faixa branca no arco)
-          var ang = pan * Math.PI / 2, rn = encher ? CV.joelho(sum * G, 1) : Math.min(1, sum * G);
-          px = cx + Math.sin(ang) * rn * RX; py = cy - Math.cos(ang) * rn * RY;
-          cv = s.cor === 'lr' ? (pan + 1) * 0.5 : Math.min(1, rn * 1.15);
+          var rn;
+          if (logR) { rn = (20 * Math.log10(rr) + offR + 60) / 60; if (rn <= 0) continue; if (rn > 1) rn = 1; }
+          else rn = encher ? CV.joelho(rr * G * 1.414, 1) : Math.min(1, rr * G * 1.414);
+          px = cx + (sx / rr) * rn * RX; py = cy - (my / rr) * rn * RY;
+          cv = s.cor === 'lr' ? (sx / rr + 1) * 0.5 : Math.min(1, rn * 1.15);
         } else {
           var xx = (a - b) * 0.707, yy = -(a + b) * 0.707, gl = encher ? G * 1.39 : s.sens;
           px = cx + (encher ? CV.joelho(xx * gl, 1) : xx * gl) * RX; py = cy + (encher ? CV.joelho(yy * gl, 1) : yy * gl) * RY;
           cv = Math.min(1, Math.sqrt(xx * xx + yy * yy) * 1.4);
         }
         var ai = (Math.min(0.999, 0.25 + (1 - i / n) * 0.75) * AN) | 0;
+        if (rgbPt) {
+          var wl2 = Math.pow(el, ONDA_MM.p), wm2 = Math.pow(em, ONDA_MM.p), wh2 = Math.pow(eh, ONDA_MM.p), ws = wl2 + wm2 + wh2 + 1e-20;
+          var ql = Math.round(wl2 / ws * GQ), qm = Math.round(wm2 / ws * GQ); if (ql + qm > GQ) qm = GQ - ql;
+          var bi = ql * (GQ + 1) + qm, arrB = bkR[bi * AN + ai];
+          arrB.push(px, py);
+          continue;
+        }
         var ci = (cv * CN) | 0; if (ci > CN - 1) ci = CN - 1; if (ci < 0) ci = 0;
         bk[ci * AN + ai].push(px, py);
       }
       CV.blend(m, c);
       var raio = Math.max(0.6, sz * 0.72), volta = Math.PI * 2;
+      if (rgbPt) {
+        for (var bq2 = 0; bq2 < NBR; bq2++) {
+          var qL = (bq2 / 5) | 0, qM = bq2 % 5, qH = 4 - qL - qM;
+          if (qH < 0) continue;
+          var r2 = qL * ONDA_MM.lo[0] + qM * ONDA_MM.mid[0] + qH * ONDA_MM.hi[0];
+          var g2 = qL * ONDA_MM.lo[1] + qM * ONDA_MM.mid[1] + qH * ONDA_MM.hi[1];
+          var b2 = qL * ONDA_MM.lo[2] + qM * ONDA_MM.mid[2] + qH * ONDA_MM.hi[2];
+          var k2 = 255 / Math.max(r2, g2, b2, 1e-9), rgbB = [r2 * k2, g2 * k2, b2 * k2];
+          for (var aq = 0; aq < AN; aq++) {
+            var arrQ = bkR[bq2 * AN + aq]; if (!arrQ.length) continue;
+            c.fillStyle = CV.rgba(rgbB, logR ? 0.45 + (aq + 0.5) / AN * 0.5 : (aq + 0.5) / AN * 0.75);
+            c.beginPath();
+            for (var q3 = 0; q3 < arrQ.length; q3 += 2) { c.moveTo(arrQ[q3] + raio, arrQ[q3 + 1]); c.arc(arrQ[q3], arrQ[q3 + 1], raio, 0, volta); }
+            c.fill();
+          }
+        }
+        CV.blend(m, c, false);
+        return;
+      }
       for (var ci2 = 0; ci2 < CN; ci2++) {
         var cpos = (ci2 + 0.5) / CN, rgb;
         if (corG === 'tema') rgb = misturaRgb(gA, gB, cpos);
         else if (corG === 'lr') rgb = cpos < 0.5 ? [240, 88, 72] : [72, 150, 245];
         else if (corG === 'fixa') rgb = corMedidor(m, 0);
-        else { var lav = Math.max(0, cpos - 0.55) / 0.45; rgb = hslRgb(hueBanda, 90 - lav * 70, 50 + cpos * 18 + lav * 22); }
+        else rgb = corMedidor(m, 0);
         for (var ai2 = 0; ai2 < AN; ai2++) {
           var arr = bk[ci2 * AN + ai2]; if (!arr.length) continue;
           c.fillStyle = CV.rgba(rgb, (ai2 + 0.5) / AN * 0.6);
@@ -1328,17 +1616,49 @@
       var span = s.modo === 'pitch' ? Math.max(64, Math.min(n - 2, Math.round(per * cycles))) : Math.floor(n / 2);
       var start = n - span - 1; if (start < 0) start = 0;
       var mid = h / 2, amp = h * 0.44 * s.sens, encher = s.tamanho !== 'real';
-      var pts = Math.max(32, Math.min(700, Math.round(w / 2), span));
-      if (!st.X || st.X.length !== pts) { st.X = new Float32Array(pts); st.Y = new Float32Array(pts); }
-      var X = st.X, Y = st.Y, pkV = 0;
-      for (i = 0; i < pts; i++) {
-        var a0 = start + ((i * span / pts) | 0), a1 = start + (((i + 1) * span / pts) | 0);
-        if (a1 <= a0) a1 = a0 + 1;
-        var sm = 0, cnt = 0;
-        for (var q = a0; q < a1 && q < n; q++) { sm += td[q]; cnt++; }
-        X[i] = i / (pts - 1) * w;
-        Y[i] = cnt ? sm / cnt : 0;
-        if (Y[i] > pkV) pkV = Y[i]; else if (-Y[i] > pkV) pkV = -Y[i];
+      /* v2.3 NO TEMA MINIMETERS: a janela dele é FIXA, ~43 ms (2.048 amostras em 48 kHz,
+         contado nos ciclos do vídeo: 12 a 270 Hz, 20 a 440 Hz, 87 a 1,9 kHz), presa num
+         cruzamento do zero que sobe pra ficar parada. Um ponto por pixel de tela,
+         alternando o menor e o maior valor da coluna: no agudo vira a faixa densa dele. */
+      var mmS = CV.themeOf(m) === 'minimeters' && !(s.cmap && s.cmap !== 'auto') && s.modo === 'pitch' && d.ringL && d.wr > 4096;
+      var pts, X, Y, pkV = 0;
+      if (mmS) {
+        var srS = d.sr || 48000, RM = d.ringL.length - 1, RL = d.ringL, RRg = d.ringR;
+        var spanS = s.ciclo === 'single' ? Math.max(64, Math.round(per)) : Math.round(0.0427 * srS);
+        var fimS = d.wr - 1, limS = Math.min(Math.round(per) + 64, 2400), trig = fimS;
+        var ant = (RL[fimS & RM] + RRg[fimS & RM]) * 0.5;
+        for (var jz = 1; jz < limS; jz++) {
+          var kz = (fimS - jz) & RM, cur = (RL[kz] + RRg[kz]) * 0.5;
+          if (cur < 0 && ant >= 0) { trig = fimS - jz + 1; break; }
+          ant = cur;
+        }
+        var cols = Math.max(32, Math.min(900, Math.round(w)));
+        pts = cols;
+        if (!st.X || st.X.length !== pts) { st.X = new Float32Array(pts); st.Y = new Float32Array(pts); }
+        X = st.X; Y = st.Y;
+        var ini0 = trig - spanS;
+        for (i = 0; i < pts; i++) {
+          var b0 = ini0 + Math.floor(i * spanS / pts), b1 = ini0 + Math.floor((i + 1) * spanS / pts);
+          if (b1 <= b0) b1 = b0 + 1;
+          var mn = 9, mx = -9;
+          for (var qz = b0; qz < b1; qz++) { var kq = qz & RM, vq = (RL[kq] + RRg[kq]) * 0.5; if (vq < mn) mn = vq; if (vq > mx) mx = vq; }
+          X[i] = i / (pts - 1) * w;
+          Y[i] = (i & 1) ? mx : mn;
+          if (mx > pkV) pkV = mx; if (-mn > pkV) pkV = -mn;
+        }
+      } else {
+        pts = Math.max(32, Math.min(700, Math.round(w / 2), span));
+        if (!st.X || st.X.length !== pts) { st.X = new Float32Array(pts); st.Y = new Float32Array(pts); }
+        X = st.X; Y = st.Y;
+        for (i = 0; i < pts; i++) {
+          var a0 = start + ((i * span / pts) | 0), a1 = start + (((i + 1) * span / pts) | 0);
+          if (a1 <= a0) a1 = a0 + 1;
+          var sm = 0, cnt = 0;
+          for (var q = a0; q < a1 && q < n; q++) { sm += td[q]; cnt++; }
+          X[i] = i / (pts - 1) * w;
+          Y[i] = cnt ? sm / cnt : 0;
+          if (Y[i] > pkV) pkV = Y[i]; else if (-Y[i] > pkV) pkV = -Y[i];
+        }
       }
       /* v2.2 ENCHER: o osciloscópio mede o pico da PRÓPRIA curva (sobe em 30ms, desce em
          1,5s) e ajusta a altura pra ele bater em 95% da metade do painel. A média de
@@ -1357,13 +1677,17 @@
       }
       var col = corMedidor(m, 0, 0.88), colF = CV.corRGB(m, 1);
       c.lineJoin = 'round';
-      if (s.cheio >= 0.5) {
+      // v2.3: no tema MiniMeters é só a linha, como no vídeo dele (sem o véu até o meio)
+      if (s.cheio >= 0.5 && CV.themeOf(m) !== 'minimeters') {
         c.fillStyle = colF ? CV.rgba(colF, 0.8) : CV.rgba(col, 0.16);
         c.beginPath(); CV.curva(c, X, Y, pts); c.lineTo(w, mid); c.lineTo(0, mid); c.closePath(); c.fill();
       }
       c.strokeStyle = CV.rgba(col, 1); c.lineWidth = 1.4;
-      c.beginPath(); CV.curva(c, X, Y, pts); c.stroke();
-      if (s.modo === 'pitch' && d.sr && h > 40) {
+      c.beginPath();
+      if (mmS) { c.moveTo(X[0], Y[0]); for (i = 1; i < pts; i++) c.lineTo(X[i], Y[i]); }
+      else CV.curva(c, X, Y, pts);
+      c.stroke();
+      if (s.modo === 'pitch' && d.sr && h > 40 && !mmS) {
         var f0 = d.sr / Math.max(1, per);
         if (f0 > 25 && f0 < 4000 && d.rms > 0.004) rotulo(c, m, CV.noteName(f0) + '  ' + CV.fmtHz(f0), 7, h - 7, 'left', 0.42);
       }

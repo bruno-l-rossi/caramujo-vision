@@ -169,6 +169,22 @@ Pedido do Bruno: a música mexendo mais nos visuais, principalmente o grave, e c
 
 Todo módulo reage ao mouse, além do som. Estúdio informa no hover (frequência, nota, dB). Arte segue o cursor: o líquido do PSY entorta, o Ferro é atraído, os fios da Fita perseguem, o Túnel desloca o centro, o Caleidoscópio gira. A regra: encostar o mouse nunca quebra o visual, só puxa ele.
 
+## Medidores no molde do MiniMeters (v2.3)
+
+O Bruno gravou a tela com o MiniMeters tocando um sinal de teste e mandou o print dos ajustes dele. Tudo abaixo foi medido nesse vídeo, quadro a quadro, contra o nosso desenho do mesmo sinal. Onde as seções da v2.1 e de agosto falam de espectro, onda, estéreo e osciloscópio, vale o que está aqui.
+
+**Espectro igual ao dele.** Eixo log que começa em 0 Hz (100 Hz, 1 kHz e 10 kHz em 29,7%, 58,6% e 88,7% da largura), janela de -80 a -20 dB depois do tilt de 4,5 dB por oitava, média na potência com τ de 51 ms (cai 86 dB/s em linha reta). Duas curvas: Mid vermelha por cima e Side azul por baixo, retas de raia em raia. Debaixo delas, barras opacas: a altura é a linha e a cor é o nível do instante, numa rampa carmim, rosa e branco. Por isso a barra acende no ataque e apaga antes da linha descer. A leitura fica parada no pico, no formato dele: "-6.01dB | 999.96Hz | B5  + 21 Cents".
+
+**Curvas.** Controle novo no Espectro: Mid e Side (o padrão dele), Só Mid, ou L e R. O "Brilho na batida" saiu, o dele não tem.
+
+**Nos outros temas** o espectro mantém a forma e pinta com as cores do tema: fundo, sombra e traço. A rampa carmim é só do tema MiniMeters.
+
+**Onda multibanda de verdade.** Uma cor por coluna, misturada pelo pico de três bandas (grave vermelho, médio verde, agudo azul), com os cortes em 152 Hz e 1.908 Hz medidos no vídeo. Rola a 345 pixels de dispositivo por segundo e nasce com um canal só, como a dele.
+
+**Loudness, Estéreo e Osciloscópio.** No tema MiniMeters o loudness fica igual ao dele: duas barras finas com o pico de L e de R, uma larga com o curto (3 s) e a etiqueta azul com o número do curto ("-14.3LUFS"), que bate com o dele na casa decimal. O médio continua nos outros temas. O estéreo virou goniômetro em todos os temas: canal sozinho sai a 45° e mono em pé. No tema MiniMeters cada ponto tem a cor da banda, o raio é em dB e o quadro nasce limpo, como o dele: o chimbal baixinho aparece como uma cúpula de pontos e some quando para. O osciloscópio, no tema MiniMeters, é a linha verde dele sem véu, numa janela fixa de 43 ms presa no cruzamento de zero.
+
+**O que ficou diferente de propósito.** A Onda, o Osciloscópio e o Estéreo nascem em Tamanho "Encher" (decisão da v2.2). "Nível real" mostra a amplitude como a dele.
+
 ## Medidores lisos (v2.1)
 
 O Bruno achou os visuais pesados e pediu clima smooth, no molde do MiniMeters. O peso tinha causa medida: numa barra de 720x170 em Retina o espectro fazia 8.711 chamadas de desenho por quadro e o osciloscópio 2.896, tudo em reta, um ponto por pixel de dispositivo. Os sete medidores somavam 12.934 chamadas. Agora somam 3.162.
@@ -260,7 +276,7 @@ Mais os do usuário em "Meus presets". A tela da v1 e os templates com nome pró
 
 ## Módulos (17)
 
-Medidores (7, os do MiniMeters): onda (três bandas em camadas, um canal por faixa, linha de zero por pista), espectro (duas curvas lisas, preenchimento pela altura, brilho na batida, leitura de dBFS e nota no hover), loudness (LUFS pela ITU-R BS.1770, curto e médio, o médio em número grande sem caixa), estéreo (cúpula com a raiz no rodapé, ponto redondo), osciloscópio (trava no tom, curva lisa com véu), espectrograma, **VU** (novo na v2: agulha com escala linear em tensão, 0 VU a 71% do arco, balística de 300 ms, referência -8 dBFS com opção de -18 pra mixar, estilo barra pra tira estreita).
+Medidores (7, os do MiniMeters): onda (multibanda do MiniMeters, uma cor por coluna, um canal por padrão), espectro (Mid vermelho e Side azul, barras que acendem com o instante, leitura de dB, Hz, nota e cents parada no pico), loudness (LUFS pela ITU-R BS.1770, curto e médio; no tema MiniMeters, pico de L e R e o curto com a etiqueta azul, como o dele), estéreo (goniômetro com a raiz no rodapé, ponto redondo), osciloscópio (trava no tom; no tema MiniMeters, janela fixa de 43 ms em linha verde), espectrograma, **VU** (novo na v2: agulha com escala linear em tensão, 0 VU a 71% do arco, balística de 300 ms, referência -8 dBFS com opção de -18 pra mixar, estilo barra pra tira estreita).
 
 Arte (10): PSY (shader líquido), AURORA (cortinas), LISSAJOUS, FITA, TRAÇO, FLUXO (pó de partículas), CAMADAS (ondas em relevo), ENXAME (constelação que junta e rompe no beat), CORDAS (harpa por banda), MALHA (tecido 3D). Todos crescem no kick e respondem à Reação ao som (v2.2).
 

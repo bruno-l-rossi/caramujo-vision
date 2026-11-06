@@ -21,6 +21,7 @@ function noopCtx() {
       if (k === 'canvas') return t._canvas;
       if (k in t) return t[k];
       if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => grad;
+      if (k === 'createPattern') return () => ({ setTransform() {} });
       if (k === 'createImageData') return (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) });
       if (k === 'putImageData' || k === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) });
       if (k === 'measureText') return (s) => ({ width: String(s || '').length * 6 });
@@ -381,6 +382,163 @@ console.log('reação ao som:');
   check('Onda, Osciloscópio e Estéreo têm Tamanho: Encher ou Nível real', comTam.length === 3 && ['wavescroll', 'scope', 'gonio'].every((id) => CV.registry[id].defaults.tamanho === 'encher'));
 }
 
+/* ================= espectro no molde do MiniMeters (v2.3) =================
+   Os números vêm do vídeo do Bruno com o sinal de teste (medicao/): grade, altura,
+   tempo de subida e queda, mid/side e o formato da leitura. Se algum destes cair,
+   o espectro voltou a ficar diferente do dele. */
+console.log('espectro no molde do MiniMeters:');
+{
+  const sr = 48000, chunk = 800, def = CV.registry.spectrum;
+  const ctxFalso = () => new Proxy({}, {
+    get(t, k) {
+      if (k in t) return t[k];
+      if (k === 'createLinearGradient') return () => ({ addColorStop() {} });
+      if (k === 'createPattern') return () => ({ setTransform() {} });
+      if (k === 'measureText') return (s) => ({ width: String(s || '').length * 6 });
+      return () => {};
+    },
+    set(t, k, v) { t[k] = v; return true; }
+  });
+  // painel do tamanho do dele no vídeo: 714 x 127 em Retina
+  const novo = () => {
+    const E = new g.AudioEngine();
+    E.sourceKind = 'system'; E.nativeOn = true; E.sr = sr; E.setupLufs(sr); E.setupBeat();
+    const cv = makeEl('canvas'); cv.width = 1428; cv.height = 254;
+    const m = { canvas: cv, ctx: ctxFalso(), w: 714, h: 127, dpr: 2, st: {}, modId: 'spectrum', s: Object.assign({}, def.defaults), mouse: { over: false } };
+    def.init(m);
+    return { E, m };
+  };
+  const passa = (o, segs, fl, fr) => {
+    const out = [];
+    for (let q = 0; q < Math.round(segs * 60); q++) {
+      const l = new Float32Array(chunk), r = new Float32Array(chunk);
+      for (let i = 0; i < chunk; i++) { const n = o.n++; l[i] = fl ? fl(n) : 0; r[i] = fr ? fr(n) : 0; }
+      o.E.feed(l, r, chunk); o.E.update(chunk / sr);
+      def.draw(o.m, o.E, 1 / 60, o.n / sr);
+      out.push(Float32Array.from(o.m.st.dbS));
+    }
+    return out;
+  };
+  const tom = (f, a) => (n) => a * Math.sin(2 * Math.PI * f * n / sr);
+  check('padrão igual ao dele: Os dois, 90%, 4,5 dB, FFT 4096, Log, Mid e Side',
+    def.defaults.estilo === 'ambos' && def.defaults.smooth === 0.9 && def.defaults.tilt === 4.5 && def.defaults.fft === 4096 && def.defaults.escala === 'log' && def.defaults.canal === 'ms');
+
+  const o = novo(); o.n = 0;
+  passa(o, 0.2);
+  // grade: 100 Hz, 1 kHz e 10 kHz onde estão as linhas dele (29,7%, 58,6% e 88,7% da largura)
+  const L = o.m.st.ax.linhas, perto = (alvo) => L.some((x) => Math.abs(x - alvo * 714) <= 1.6);
+  check('grade cai nas linhas dele: 100 Hz, 1 kHz e 10 kHz (eixo log da raia + 1, de 0 Hz ao Nyquist)',
+    perto(0.2969) && perto(0.5861) && perto(0.8866) && L.length === 29, L.length + ' linhas');
+  // 1 kHz a -30 dBFS: no dele fica a 1/6 do topo
+  const sobe = passa(o, 1.0, tom(1000, Math.pow(10, -30 / 20)), tom(1000, Math.pow(10, -30 / 20)));
+  const kb = Math.round(1000 / o.E.specBinHz), fim = sobe[sobe.length - 1][kb];
+  const v = (fim + 4.5 * Math.log2(kb * o.E.specBinHz / 1000) + 80) / 60;
+  check('1 kHz a -30 dBFS fica a 1/6 do topo (janela de -80 a -20 dB)', Math.abs(v - 0.833) < 0.02, 'altura ' + v.toFixed(3));
+  check('sobe como o dele: ainda baixo no 1º quadro, a 3 dB do fim em 6 quadros',
+    fim - sobe[0][kb] > 10 && fim - sobe[5][kb] < 3, (sobe[0][kb] - fim).toFixed(1) + ' dB · ' + (sobe[5][kb] - fim).toFixed(1) + ' dB');
+  const bqTom = o.m.st.bq[Math.floor(o.m.st.ax.xb[kb] * 2)];
+  const cai = passa(o, 0.5);
+  const queda = (cai[6][kb] - cai[18][kb]) / (12 / 60);
+  check('cai como o dele: 86 dB/s em linha reta (τ de 51 ms na potência)', queda > 70 && queda < 102, queda.toFixed(0) + ' dB/s');
+  const bqDepois = o.m.st.bq[Math.floor(o.m.st.ax.xb[kb] * 2)];
+  passa(o, 0); // nada
+  check('barra acende com o som de agora e apaga antes da linha (o rabo é só da linha)', bqTom >= 0 && bqDepois === -1 && cai[cai.length - 1][kb] > -200,
+    'cor no tom ' + bqTom + ' · depois ' + bqDepois);
+
+  // mid e side: tom só na esquerda a -12 lê -18 nos dois; tom igual nos dois canais não tem side
+  const o2 = novo(); o2.n = 0;
+  passa(o2, 0.6, tom(880, Math.pow(10, -12 / 20)), null);
+  const k88 = Math.round(880 / o2.E.specBinHz), dbSide = o2.E.spectrum(4096, 's'), dbMid = o2.m.st.dbS;
+  check('mid e side: tom só na esquerda a -12 dBFS lê -18 nas duas curvas (é o que o dele mostra)',
+    Math.abs(dbMid[k88] + 18) < 1.2 && Math.abs(dbSide[k88] + 18) < 1.2, 'mid ' + dbMid[k88].toFixed(1) + ' · side ' + dbSide[k88].toFixed(1));
+  const o3 = novo(); o3.n = 0;
+  passa(o3, 0.3, tom(880, 0.25), tom(880, 0.25));
+  check('som igual nos dois canais deixa a curva azul no chão', o3.E.spectrum(4096, 's')[k88] < -100, o3.E.spectrum(4096, 's')[k88].toFixed(0) + ' dB');
+  check('leitura no formato dele', CV.leituraMM(-6.01, 999.96) === '-6.01dB | 999.96Hz | B5  + 21 Cents' && CV.leituraMM(-24, 12000) === '-24.00dB | 12.00kHz | F#9 + 23 Cents',
+    CV.leituraMM(-6.01, 999.96));
+}
+
+console.log('medidores no molde do MiniMeters:');
+{
+  /* Onda, Estéreo, Osciloscópio e Loudness, medidos no mesmo vídeo. Contexto que grava
+     as chamadas, pra conferir a geometria e o texto sem pixel. */
+  const sr = 48000, chunk = 800;
+  const gravaCtx = () => {
+    const log = { arc: [], fillText: [], lineTo: 0, fillRect: [] };
+    return new Proxy({ _log: log }, {
+      get(t, k) {
+        if (k in t) return t[k];
+        if (k === 'arc') return (x, y) => log.arc.push([x, y]);
+        if (k === 'fillText') return (s) => log.fillText.push(String(s));
+        if (k === 'fillRect') return (x, y, w, h) => log.fillRect.push([x, y, w, h, t.fillStyle]);
+        if (k === 'lineTo') return () => { log.lineTo++; };
+        if (k === 'createLinearGradient') return () => ({ addColorStop() {} });
+        if (k === 'createPattern') return () => ({ setTransform() {} });
+        if (k === 'measureText') return (s) => ({ width: String(s || '').length * 6 });
+        return () => {};
+      },
+      set(t, k, v) { t[k] = v; return true; }
+    });
+  };
+  const roda = (id, w, h, segs, fl, fr, sx) => {
+    const E = new g.AudioEngine();
+    E.sourceKind = 'system'; E.nativeOn = true; E.sr = sr; E.setupLufs(sr); E.setupBeat();
+    const def = CV.registry[id], cv = makeEl('canvas'); cv.width = w * 2; cv.height = h * 2;
+    const m = { canvas: cv, ctx: gravaCtx(), w, h, dpr: 2, st: {}, modId: id, s: Object.assign({}, def.defaults, sx || {}), mouse: { over: false } };
+    def.init(m);
+    let nn = 0;
+    for (let q = 0; q < Math.round(segs * 60); q++) {
+      const l = new Float32Array(chunk), r = new Float32Array(chunk);
+      for (let i = 0; i < chunk; i++) { l[i] = fl(nn); r[i] = fr(nn); nn++; }
+      E.feed(l, r, chunk); E.update(chunk / sr);
+      if (q === Math.round(segs * 60) - 1) { m.ctx._log.arc.length = 0; m.ctx._log.fillText.length = 0; m.ctx._log.lineTo = 0; m.ctx._log.fillRect.length = 0; }
+      def.draw(m, E, 1 / 60, nn / sr);
+    }
+    m.E = E;
+    return m;
+  };
+  const temaAntes = CV.theme; CV.theme = 'minimeters';
+  const tom = (f, a) => (n) => a * Math.sin(2 * Math.PI * f * n / sr), zero = () => 0;
+  check('Onda com um canal só por padrão, como a dele (Canal 2: Off)', CV.registry.wavescroll.defaults.ch2 === 'off');
+  // e rola na velocidade dele: no beat de 90 BPM do vídeo, um kick a cada 230 px de Retina
+  const passoAntes = CV.passo; let andou = 0;
+  CV.passo = function (mm, p, dt) { const dx = passoAntes(mm, p, dt); if (mm.modId === 'wavescroll') andou += dx; return dx; };
+  try { roda('wavescroll', 446, 127, 1, tom(440, 0.25), tom(440, 0.25)); } finally { CV.passo = passoAntes; }
+  check('Onda rola como a dele: 345 px de dispositivo por segundo em Retina (a v2.2 fazia 168)', Math.abs(andou - 345) <= 3, andou + ' px em 1 s');
+  const c50 = CV.corMultibanda(1, 0.12, 0), c1k = CV.corMultibanda(0.2, 0.9, 0.3), c6k = CV.corMultibanda(0, 0.15, 1);
+  check('multibanda dele: grave vermelho, 1 kHz verde, agudo azul (uma cor por coluna, sem camadas)',
+    c50[0] > 250 && c50[1] < 110 && c1k[1] > 250 && c1k[0] < 80 && c6k[2] > 250 && c6k[0] < 10,
+    [c50, c1k, c6k].map((c) => c.map((v) => v | 0).join(',')).join(' · '));
+  // Estéreo: canal sozinho sai a 45° (goniômetro), mono sai em pé
+  const ang = (m) => { const a = m.ctx._log.arc, cx = m.st.raiz[0], cy = m.st.raiz[1];
+    const v = a.map(([x, y]) => Math.atan2(cy - y, x - cx) * 180 / Math.PI).filter((d) => d > 1).sort((p, q) => p - q); return v.length ? v[v.length >> 1] : NaN; };
+  const gL = roda('gonio', 230, 127, 0.5, tom(440, 0.25), zero), gM = roda('gonio', 230, 127, 0.5, tom(440, 0.25), tom(440, 0.25));
+  check('Estéreo é goniômetro: canal sozinho a 45° (era deitado no rodapé), mono em pé',
+    Math.abs(ang(gL) - 135) < 6 && Math.abs(ang(gM) - 90) < 4, 'esquerda ' + ang(gL).toFixed(0) + '° · mono ' + ang(gM).toFixed(0) + '°');
+  // raio em dB (60 dB da raiz à borda): no Nível real, -12 dBFS num canal só vai a 80% do raio, como a linha dele
+  const gR = roda('gonio', 268, 127, 0.5, tom(440, 0.25), zero, { tamanho: 'real' });
+  const rMax = Math.max(...gR.ctx._log.arc.map(([x, y]) => Math.hypot(x - gR.st.raiz[0], y - gR.st.raiz[1]))) / (127 - 10 - 1);
+  check('Estéreo com o raio em dB, como o dele: -12 dBFS num canal só chega a 80% do raio (Nível real)', Math.abs(rMax - 0.8) < 0.03, (rMax * 100).toFixed(1) + '%');
+  // Osciloscópio: janela fixa de ~43 ms; a 440 Hz cabem ~19 ciclos (no dele, 20)
+  const os = roda('scope', 306, 127, 0.4, tom(440, 0.25), tom(440, 0.25)), Y = os.st.Y, meio = os.h / 2;
+  let sob = 0; for (let i = 2; i < Y.length; i += 2) if (Y[i - 2] > meio && Y[i] <= meio) sob++;
+  check('Osciloscópio na janela dele: ~43 ms, 18 a 21 ciclos de 440 Hz (o nosso mostrava 3)', sob >= 17 && sob <= 21, sob + ' ciclos');
+  // Loudness: a etiqueta azul mostra o CURTO, como a dele (o integrado chegava a 7 LU de diferença)
+  // 1 s alto e 3,5 s baixo: o curto já esqueceu o trecho alto, o integrado ainda não
+  const desce = (n) => (n < sr ? 0.4 : 0.1) * Math.sin(2 * Math.PI * 1000 * n / sr);
+  const lo = roda('loudness', 150, 127, 4.5, desce, desce);
+  const et = lo.ctx._log.fillText.find((t) => /LUFS$/.test(t));
+  check('Loudness com a etiqueta dele, no número do curto ("-14.3LUFS")', !!et && et === lo.E.lufsS.toFixed(1) + 'LUFS' && lo.E.lufsI - lo.E.lufsS > 3,
+    (et || 'sem etiqueta') + ' · curto ' + lo.E.lufsS.toFixed(1) + ' · integrado ' + lo.E.lufsI.toFixed(1));
+  // as duas finas são o pico de L e de R: tom de -12 dBFS só na esquerda acende só a da esquerda, em -12
+  const lp = roda('loudness', 150, 127, 0.5, tom(440, 0.25), zero), fr2 = lp.ctx._log.fillRect;
+  const finaL = fr2.find((r) => r[0] === 36 && r[2] === 4 && r[4] !== '#37638b'), finaR = fr2.find((r) => r[0] === 42 && r[2] === 4 && r[4] !== '#37638b');
+  const yAlvo = 9.75 + (12.04 / 60) * (127 - 1 - 9.75);
+  check('Loudness: finas de pico por canal, a da esquerda em -12 dB e a da direita apagada',
+    !!finaL && Math.abs(finaL[1] - yAlvo) < 1.5 && !finaR, finaL ? 'esquerda y ' + finaL[1].toFixed(1) + ' (alvo ' + yAlvo.toFixed(1) + ')' : 'sem barra');
+  CV.theme = temaAntes;
+}
+
 /* ================= layout em linhas, presets e estado ================= */
 console.log('layout e presets:');
 const S = A.state;
@@ -533,6 +691,7 @@ check('o número do LUFS continua crescendo com o painel', CV.fsBig({ w: 900, h:
         if (k === 'canvas') return t._canvas;
         if (k in t) return t[k];
         if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => grad;
+        if (k === 'createPattern') return () => { n.createPattern = (n.createPattern || 0) + 1; return { setTransform() {} }; };
         if (k === 'measureText') return (s) => ({ width: String(s || '').length * 6 });
         return () => { n[k] = (n[k] || 0) + 1; };
       },
@@ -550,10 +709,18 @@ check('o número do LUFS continua crescendo com o painel', CV.fsBig({ w: 900, h:
     engine.update(0.016); def.draw(m, engine, 0.016, 1);
     return ctx._n;
   };
-  const sp = mede('spectrum'), segS = (sp.lineTo || 0) + (sp.quadraticCurveTo || 0);
-  check('espectro liso: um ponto a cada 2 pixels, em curva (era 8.711 chamadas por quadro)', segS > 0 && segS <= 1500 && (sp.quadraticCurveTo || 0) > 0, segS + ' segmentos');
+  /* v2.3: o espectro virou o do MiniMeters, reta de raia em raia nas duas curvas (mid e
+     side). No agudo, passando de 3 raias por pixel, vai o mínimo e o máximo da coluna:
+     2.048 raias viram ~1.000 pontos por curva. As barras saem num polígono só (um ponto
+     por coluna de dispositivo, 1.440 + 1 aqui), pintado com a fileira de cores. */
+  const sp = mede('spectrum'), segS = (sp.lineTo || 0) + (sp.quadraticCurveTo || 0), segC = segS - 1441;
+  check('espectro no molde do MiniMeters sem estourar o desenho: até 1.200 pontos por curva, barras num fill só',
+    segC > 0 && segC <= 2400 && (sp.fill || 0) <= 2 && !(sp.rect || 0) && sp.createPattern === 1,
+    segC + ' segmentos nas curvas · ' + (sp.fill || 0) + ' fill · ' + (sp.rect || 0) + ' retângulos');
   const sc = mede('scope'), segO = (sc.lineTo || 0) + (sc.quadraticCurveTo || 0);
-  check('osciloscópio liso: linha em curva (era 2.896 chamadas por quadro)', segO > 0 && segO <= 900 && (sc.quadraticCurveTo || 0) > 0, segO + ' segmentos');
+  // v2.3: no tema MiniMeters o osciloscópio é a janela fixa dele, em reta (um ponto por pixel de tela)
+  check('osciloscópio liso: até 900 segmentos (era 2.896 chamadas por quadro), em curva fora do tema MiniMeters',
+    segO > 0 && segO <= 900 && ((sc.quadraticCurveTo || 0) > 0 || CV.theme === 'minimeters'), segO + ' segmentos');
   const go = mede('gonio');
   check('estéreo em ponto redondo, sem quadradinho de areia', (go.arc || 0) > 0 && !(go.rect || 0), (go.arc || 0) + ' pontos');
 }
@@ -579,8 +746,8 @@ check('gravação tenta MP4 antes de webm (o Final Cut não abre webm)', srcApp.
 check('gravação compensa a sincronia do clipe', /setRecordDelayMs\(\(engine\.latencyMs \|\| 0\) \+ presentMs\(\)\)/.test(srcApp));
 check('gravação tem as três medidas de rede social', /'916': \[1080, 1920\], '11': \[1080, 1080\], '169': \[1920, 1080\]/.test(srcApp));
 check('soltar arquivo de áudio na janela toca a faixa', /addEventListener\('drop'/.test(srcApp) && /engine\.playFile\(f\)/.test(srcApp));
-check('espectro guarda uma caixa por tamanho e por canal (nenhuma FFT nasce duas vezes)',
-  /this\._spec \|\| \(this\._spec = \{\}\)/.test(srcAud) && /var key = \(ch === 'l' \|\| ch === 'r'\) \? n \+ ch : n;/.test(srcAud));
+check('espectro guarda uma caixa por tamanho e por canal, side incluído (nenhuma FFT nasce duas vezes)',
+  /this\._spec \|\| \(this\._spec = \{\}\)/.test(srcAud) && /var key = \(ch === 'l' \|\| ch === 'r' \|\| ch === 's'\) \? n \+ ch : n;/.test(srcAud));
 
 /* ================= laço principal ================= */
 console.log('laço:');
