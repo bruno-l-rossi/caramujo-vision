@@ -163,8 +163,12 @@ ipcMain.handle('cv-native-start', async () => {
 
   if (nativeRec) { try { await nativeRec.stop(); } catch (e) {} nativeRec = null; }
   nativeRec = new AudioRecorder();
+  /* v2.4: o bloco vai com a HORA EM QUE CHEGOU AQUI (relógio de época, o mesmo nos
+     dois processos). A tela usa essa hora pro relógio do som: se ela estiver ocupada
+     desenhando quando o bloco atravessa, o atraso da travessia não vira tremida. */
+  const relogio = () => performance.timeOrigin + performance.now();
   nativeRec.on('data', (buf) => {
-    if (win && !win.isDestroyed()) win.webContents.send('cv-native-audio', buf);
+    if (win && !win.isDestroyed()) win.webContents.send('cv-native-audio', buf, relogio());
   });
   nativeRec.on('error', (err) => {
     if (win && !win.isDestroyed()) win.webContents.send('cv-native-error', String((err && err.message) || err));

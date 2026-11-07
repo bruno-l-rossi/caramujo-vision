@@ -156,6 +156,15 @@ Em **Ajustes › Janela** dá pra limitar os quadros por segundo: **Da tela** ac
 
 Aperte `F` pra ver os quadros por segundo e quanto tempo o som leva pra chegar na tela.
 
+## v2.4: fluidez e tempo real
+
+- Todo visual lê o som numa cabeça de leitura que anda no relógio da tela. A captura chega em blocos; agora cada quadro recebe som novo e espectro, estéreo, onda e osciloscópio andam lisos a 120 quadros.
+- **Fluidez** em Áudio > Tempo real: Suave (padrão) ou Imediata (menor atraso, com trancos entre um bloco e outro).
+- **Captura**: Nativa (padrão) ou Do sistema. O estado mostra se o caminho chegou em estéreo ou mono.
+- O HUD (tecla F) mostra o recuo da cabeça, o intervalo entre blocos e quantos quadros ficaram sem som.
+- Estéreo no tema MiniMeters com os pontos dele: quadradinhos de 2x2 px que somam luz, todos os 1.024 da janela.
+- Rastro, enxame, corda e trava de tom contam no relógio: o mesmo comportamento a 60 e a 120 quadros.
+
 ## v2.3: medidores no molde do MiniMeters
 
 - O espectro foi medido contra o MiniMeters num vídeo, quadro a quadro, com um sinal de teste. Eixo, escala de dB, subida e queda batem com os dele.
@@ -236,7 +245,7 @@ Em **Ajustes › Áudio** o estado mostra **Estéreo nativo** quando ele está a
 npm test
 ```
 
-Roda 161 checagens em poucos segundos: motor de áudio, a reação ao grave (um beat sintético em dois volumes), o espectro e os medidores contra as medidas do MiniMeters, os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
+Roda 168 checagens em poucos segundos: motor de áudio, a cabeça de leitura com a captura em blocos, a reação ao grave (um beat sintético em dois volumes), o espectro e os medidores contra as medidas do MiniMeters, os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
 
 ## Estrutura
 

@@ -138,7 +138,8 @@
     return {
       v: 2, theme: 'minimeters', pos: desk ? 'bottom' : 'free', pinned: false, fps: 0,
       fx: { preset: 'off', amount: 0.8 }, recSize: 'tela', barH: BAR_DEF, colW: COL_DEF, reacao: 'forte',
-      toolbar: 'auto', preset: 'barra', dirty: false, rows: rowsFromPreset(PRESET.barra), firstRun: true
+      toolbar: 'auto', preset: 'barra', dirty: false, rows: rowsFromPreset(PRESET.barra), firstRun: true,
+      fluidez: 'suave', captura: 'nativa'
     };
   }
 
@@ -204,6 +205,8 @@
     st.fx.amount = Math.max(0, Math.min(1, +st.fx.amount || 0));
     if (!REC_PX[st.recSize] && st.recSize !== 'tela') st.recSize = 'tela';
     if (!CV.REACOES.some(function (r) { return r[0] === st.reacao; })) st.reacao = 'forte';
+    if (st.fluidez !== 'imediata') st.fluidez = 'suave';
+    if (st.captura !== 'sistema') st.captura = 'nativa';
     st.barH = Math.max(60, Math.min(600, +st.barH || BAR_DEF));
     st.colW = Math.max(140, Math.min(900, +st.colW || COL_DEF));
     st.rows = (Array.isArray(st.rows) ? st.rows : []).map(function (r) {
@@ -226,6 +229,7 @@
   }
   var state = loadState();
   CV.theme = state.theme;
+  engine.fluidez = state.fluidez;
   /* REAÇÃO AO SOM (v2.2): quanto a música mexe nos visuais, pra tela inteira. Nasce em
      Forte, que é o comportamento pedido: o grave comanda e o visual enche o painel.
      Cada visual ainda tem o ajuste fino dele (Reação, ou Tamanho nos medidores). */
@@ -1266,6 +1270,11 @@
     if (k === 'demo') return { txt: 'Beat demo', nivel: 'ok', det: '' };
     if (k === 'synth') return { txt: 'Demo sintético', nivel: 'ok', det: '' };
     if (k === 'file') return { txt: 'Tocando ' + (engine.sourceLabel || 'arquivo').toLowerCase(), nivel: 'ok', det: 'Clique em Reconectar pra voltar a ouvir o computador.' };
+    if (k === 'system' && !engine.nativeOn && audioStat.nivel === 'ok') {
+      var mono = engine.estereo === false;
+      return { txt: 'Áudio do computador (' + (engine.estereo === undefined ? 'medindo' : mono ? 'mono' : 'estéreo') + ')', nivel: 'ok',
+        det: mono ? 'Este caminho chegou em mono. Estéreo de verdade: Captura “Nativa”, com o módulo nativo (veja o README).' : audioStat.det };
+    }
     return audioStat;
   }
   function tabAudio() {
@@ -1277,9 +1286,20 @@
     if (as.det) h += '<p class="note" style="margin-top:8px">' + esc(as.det) + '</p>';
     h += '<div class="acts"><button class="btn" id="audretry">Reconectar</button>' +
       '<button class="btn" id="auddemo">Testar com o beat demo</button></div></div>';
+    var camposS = {
+      flu: { k: 'flu', label: 'Fluidez', type: 'seg', opts: [['suave', 'Suave'], ['imediata', 'Imediata']] },
+      cap: { k: 'cap', label: 'Captura', type: 'seg', opts: [['nativa', 'Nativa'], ['sistema', 'Do sistema']] }
+    };
+    h += '<div class="sec"><h4>Tempo real</h4><div class="form">' + ctrlHtml(camposS.flu, state.fluidez, 'flu');
+    if (desk) h += ctrlHtml(camposS.cap, state.captura, 'cap');
+    h += '</div><p class="note" style="margin-top:10px">O som do computador chega em blocos. <b>Suave</b> dá som novo a todo quadro, ' +
+      'e o atraso extra é o tamanho de um bloco. <b>Imediata</b> mostra o bloco assim que ele chega, com o menor atraso, mas entre um bloco e outro o desenho para. ' +
+      'A tecla F mostra o bloco, o recuo e o atraso total.</p>' +
+      (desk ? '<p class="note"><b>Do sistema</b> usa a captura do próprio motor do app (Core Audio no macOS 15 ou mais novo). Vale testar: em algumas máquinas ela chega em bloco menor.</p>' : '') +
+      '</div>';
     h += '<div class="sec"><h4>Dicas</h4>' +
       '<p class="note">O app escuta o que sai das caixas: FL Studio, YouTube, Spotify. Não precisa de driver.</p>' +
-      '<p class="note">Estéreo de verdade vem do módulo nativo (o estado mostra <b>Estéreo nativo</b>). Sem ele o app segue em mono pelo sistema; o passo a passo está no README.</p>' +
+      '<p class="note">Estéreo de verdade vem do módulo nativo (o estado mostra <b>Estéreo nativo</b>). A captura “Do sistema” chega em mono ou em estéreo, conforme o macOS: o estado mostra qual chegou. O passo a passo do módulo está no README.</p>' +
       '<p class="note">Também dá pra soltar um arquivo de áudio na janela: ele toca e os visuais reagem, bom pra gravar clipe de uma faixa pronta.</p></div>';
     setBody.innerHTML = h;
     var pick = $('srcpick');
@@ -1298,6 +1318,10 @@
       else startDevice(pick.value, pick.options[pick.selectedIndex].textContent);
     });
     $('audretry').addEventListener('click', function () { state.audioIn = 'auto'; save(); startComputerAudio(); });
+    wireCtrls(setBody, camposS, function (k, v) {
+      if (k === 'flu') { state.fluidez = v; engine.fluidez = v; save(); }
+      if (k === 'cap') { state.captura = v; state.audioIn = 'auto'; save(); startComputerAudio(); }
+    });
     $('auddemo').addEventListener('click', function () {
       engine.startDemo().then(function (r) {
         setAudioStat(r === 'synth' ? 'Demo sintético' : 'Beat demo', 'ok');
@@ -1326,7 +1350,7 @@
     h += '</div></div><div class="sec"><h4>Como usar</h4>' +
       '<p class="note">Arraste a divisória entre dois visuais pra mudar o tamanho. Arraste pela alça <b>⋮⋮</b> pra trocar de lugar: solte do lado pra encaixar na linha, em cima ou embaixo pra abrir uma linha nova.</p>' +
       '<p class="note">O preset guarda quais visuais estão na tela e o tamanho de cada um. Tema e posição são separados.</p></div>' +
-      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision 2.3</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
+      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision 2.4</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
     setBody.innerHTML = h;
   }
   function setToolbarMode(m) {
@@ -1409,10 +1433,12 @@
     };
     var goLoopback = function (diag) {
       engine.startSystemLoopback().then(function () {
-        setAudioStat('Áudio do computador (mono)', 'ok', diag || 'Estéreo de verdade pede o módulo nativo: veja o README.');
+        setAudioStat('Áudio do computador', 'ok', diag || '');
       }).catch(function () { goBlackhole('O loopback do sistema não respondeu'); });
     };
     setAudioStat('Conectando…', 'warn');
+    // v2.4: dá pra pedir a captura do próprio Chromium (Core Audio no macOS 15+) e comparar no HUD
+    if (desk && state.captura === 'sistema' && desk.enableLoopback) { goLoopback(''); return; }
     if (desk && desk.nativeStart) {
       engine.startNativeCapture().then(function () {
         setAudioStat('Estéreo nativo', 'ok');
@@ -1507,6 +1533,7 @@
   function drawRec(p, d, dt, t) {
     if (!p.recSrc) return;
     if (p.recSrc.ctx) { p.recSrc.ctx.lineJoin = 'round'; p.recSrc.ctx.lineCap = 'round'; }
+    CV.dtQuadro = dt;
     try { p.def.draw(p.recSrc, d, dt, t); } catch (e) {}
     if (p.recSrc.ctx) fillBg(p, p.recSrc.canvas, p.recSrc.ctx);
     if (!p.recFx) return;
@@ -1726,7 +1753,9 @@
     var n = Object.keys(panels).length;
     hudEl.textContent = fps.toFixed(0) + ' fps · ' + n + ' visuais' + (state.fps ? ' · limite ' + state.fps : '') +
       '\nsom → olho ' + (ana + tela).toFixed(0) + ' ms (análise ' + ana.toFixed(1) + ' + tela ' + tela.toFixed(0) + ')' +
-      '\nbloco ' + (engine.chunkMs || 0).toFixed(1) + ' ms · ' + via +
+      '\nbloco ' + (engine.chunkMs || 0).toFixed(1) + ' ms · ' + via + (engine.estereo === false ? ' mono' : '') +
+      '\nfluidez ' + (engine.fluidez === 'imediata' ? 'imediata' : 'suave') + ' · recuo ' + (engine.lagMs || 0).toFixed(1) + ' ms' +
+      (engine.async ? ' · intervalo ' + (engine.gapMs || 0).toFixed(1) + ' ms · faltou ' + (engine.underruns || 0) : '') +
       '\nacabamento ' + (fxActive() ? state.fx.preset + ' ' + (fxMs + fxMsUp).toFixed(2) + ' ms' : 'off') +
       (ART_SKIP > 1 ? ' · arte 1/2' : '') + (window.CV_QUALITY < 1 ? ' · arte ' + Math.round(window.CV_QUALITY * 100) + '%' : '');
   }
@@ -1795,6 +1824,7 @@
       if (p.rec) drawRec(p, d, dt, t);
       if (isArt && !drawArt) continue;
       if (p.ctx) { p.ctx.lineJoin = 'round'; p.ctx.lineCap = 'round'; }
+      CV.dtQuadro = isArt ? artDt : dt;      // o rastro apaga no relógio, não no quadro
       try { p.def.draw(p, d, isArt ? artDt : dt, t); } catch (e) { if (!p.erro) { p.erro = 1; console.error('[caramujo] ' + p.modId, e); } }
       // o fundo vem do CSS do painel; só o vídeo gravado direto precisa dele pintado
       if (p.recDireto && p.ctx) fillBg(p, p.canvas, p.ctx);

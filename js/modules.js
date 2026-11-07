@@ -394,11 +394,17 @@
      então todo painel com rastro virava um quadrado mais escuro que os vizinhos. Agora
      o rastro some tirando opacidade (destination-out): o canvas volta a ser
      transparente e o fundo que aparece é o do painel, igual em todos os visuais. */
+  /* v2.4: o rastro some no RELÓGIO, não no quadro. O valor do slider foi pensado a
+     60 quadros; a 120 cada quadro tirava a mesma fatia e o rastro durava metade do
+     tempo. Agora a fatia do quadro é a de 60 elevada ao tamanho do quadro. */
+  CV.dtQuadro = 1 / 60;
   CV.fade = function (m, c, v) {
+    var a60 = CV.trailClear(v), q = Math.max(0.25, Math.min(3, (CV.dtQuadro || 1 / 60) * 60));
+    var a = 1 - Math.pow(1 - a60, q);
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalCompositeOperation = 'destination-out';
-    c.fillStyle = 'rgba(0,0,0,' + CV.trailClear(v).toFixed(3) + ')';
+    c.fillStyle = 'rgba(0,0,0,' + a.toFixed(3) + ')';
     c.fillRect(0, 0, c.canvas.width, c.canvas.height);
     c.restore();
   };
@@ -487,6 +493,20 @@
     var dx = Math.floor(acc);
     m.st._pa = acc - dx;
     return dx;   // pode dar 0: numa tela de 120Hz a faixa anda um quadro sim, outro não
+  };
+  /* v2.4: a faixa anda pelas AMOSTRAS que a cabeça de leitura andou, não pelo relógio
+     do quadro. Assim cada pixel da onda é um pedaço de som que existiu, sem repetir
+     nem pular: com a captura em blocos, andar pelo relógio desenhava o mesmo pedaço
+     2 ou 3 vezes e depois engolia o bloco novo inteiro de uma vez. */
+  CV.anda = function (d, dt) {
+    var sr = (d && d.sr) || 48000;
+    return d && d.adv !== undefined ? Math.min(d.adv, sr * 0.1) : Math.round(Math.min(0.1, dt || 1 / 60) * sr);
+  };
+  CV.passoAmostras = function (m, pxPorSeg, amostras, sr) {
+    var acc = (m.st._pa || 0) + pxPorSeg * amostras / (sr || 48000);
+    var dx = Math.floor(acc);
+    m.st._pa = acc - dx;
+    return dx;
   };
   CV.scrollRing = {
     // devolve o x onde escrever a coluna nova (e limpa a área)
@@ -985,11 +1005,13 @@
       }
       var xb = ax.xb, tb = ax.tb;
 
-      /* MÉDIA NA POTÊNCIA, como a dele: 0,9 a cada 256 amostras. Em 48 kHz dá τ = 51 ms.
-         Vira uma constante de tempo pra valer igual a 60 ou a 120 quadros. */
+      /* MÉDIA NA POTÊNCIA, como a dele: 0,9 a cada 256 amostras (τ = 51 ms em 48 kHz).
+         v2.4: conta pelas AMOSTRAS que a cabeça de leitura andou, que é o jeito dele, e
+         não pelo tempo do quadro. Com a cabeça andando liso, o espectro anda liso a 60
+         ou a 120 quadros; sem som novo (modo imediato entre dois blocos), fica parado. */
       var sm = Math.max(0, Math.min(0.995, +s.smooth || 0));
-      var sr = binHz * n, tau = sm > 0 ? 256 / (sr * -Math.log(sm)) : 0;
-      var aK = tau > 0 ? Math.exp(-Math.min(0.25, dt) / tau) : 0, bK = 1 - aK;
+      var sr = binHz * n, anda = d.adv !== undefined ? Math.min(d.adv, sr * 0.25) : Math.min(0.25, dt) * sr;
+      var aK = sm > 0 ? Math.pow(sm, anda / 256) : 0, bK = 1 - aK;
       var dbS = st.dbS && st.dbS.length === nb ? st.dbS : (st.dbS = new Float32Array(nb));
       function media(src, nomePw) {
         var pw = st[nomePw];
@@ -1212,15 +1234,16 @@
       var chans = [s.ch1];
       if (s.ch2 && s.ch2 !== 'off') chans.push(s.ch2);
       var lanes = chans.length;
-      var dx = CV.passo(m, 2.875 * s.speed * (m.dpr || 1), dt);   // 172,5 px de tela por segundo
-      st._dtA = (st._dtA || 0) + dt;
+      var sr = d.sr || 48000, anda = CV.anda(d, dt);
+      var dx = CV.passoAmostras(m, 172.5 * s.speed * (m.dpr || 1), anda, sr);   // 172,5 px de tela por segundo
+      st._advA = (st._advA || 0) + anda;
       if (dx >= 1) {
-        var dtCol = Math.min(0.1, st._dtA); st._dtA = 0;
         bc.globalCompositeOperation = 'source-over';
         var x = CV.scrollRing.next(m, 'buf', buf, bc, dx);
-        var H = buf.height, laneH = H / lanes, sr = d.sr || 48000;
+        var H = buf.height, laneH = H / lanes;
         var L = d.timeL, R = d.timeR, n = L.length;
-        var fresh = Math.min(n, Math.max(48, Math.round(sr * dtCol)));
+        // exatamente o som que a cabeça andou desde a última coluna escrita
+        var fresh = Math.min(n, Math.max(1, st._advA)); st._advA = 0;
         var modo = s.cor === 'auto' ? (CV.themeOf(m) === 'minimeters' ? 'banda' : 'tema') : s.cor;
         var aLo = Math.exp(-2 * Math.PI * (modo === 'banda' ? ONDA_MM.fL : 220) / sr), aHi = Math.exp(-2 * Math.PI * (modo === 'banda' ? ONDA_MM.fH : 2400) / sr);
         var cLo, cMid, cHi, cUma;
@@ -1312,9 +1335,10 @@
     c.fillRect(36, y0, 4, 1); c.fillRect(42, y0, 4, 1); c.fillRect(54, y0, 9, 1);
     // pico de L e de R nas últimas 256 amostras
     var pL = 0, pR = 0;
-    if (d.ringL && d.ringR && d.wr > 256) {
+    var fimP = d.pos !== undefined ? d.pos : d.wr;
+    if (d.ringL && d.ringR && fimP > 256) {
       var RM = d.ringL.length - 1, aL = d.ringL, aR = d.ringR;
-      for (var k = d.wr - 256; k < d.wr; k++) {
+      for (var k = fimP - 256; k < fimP; k++) {
         var a = aL[k & RM], b = aR[k & RM];
         if (a < 0) a = -a; if (b < 0) b = -b;
         if (a > pL) pL = a; if (b > pR) pR = b;
@@ -1449,17 +1473,29 @@
          E o RAIO É EM dB, 60 dB da raiz até a borda: -12 dBFS num canal só chega a 80%
          do raio, como a linha dele, e o chimbal baixinho entre um kick e outro vira a
          cúpula de pontos que aparece no vídeo (no raio linear ele sumia na raiz).
-         No Encher o pico recente sobe pra borda (até 30 dB); no Nível real fica o dele. */
+         v2.4: medido em 406 quadros do vídeo, o raio em dB erra 10% do raio contra o
+         dele (linear erra 15%). O Encher só levanta fonte BAIXA (pico abaixo de -24 dB,
+         até 12 dB): empurrar todo pico pra borda punha o tom de -18 dB no topo, e o
+         dele fica a 60%. Música em volume normal sai igual nos dois tamanhos. */
       var logR = cupula && mmG, offR = 0;
       if (logR) {
         RY = h - padB - 1; RX = RY;
-        if (encher) offR = Math.max(0, Math.min(30, -20 * Math.log10(Math.max(1e-4, sm.ondaRef * 1.414))));
+        if (encher) offR = Math.max(0, Math.min(12, -20 * Math.log10(Math.max(1e-4, sm.ondaRef * 1.414)) - 24));
       }
       var gS = CV.env(m, 'goG', sm.grave, dt, 0.01, 0.12);
       var sz = s.ponto > 0.05 ? s.ponto : Math.max(0.9, Math.min(1.8, Math.sqrt(w * h) / 150));
       if (encher) sz *= 1 + 0.5 * Math.min(1, gS * CV.rx(m));
       // painel grande ganha mais pontos (até as 1024 amostras do quadro), pequeno fica leve
       var step = Math.max(1, Math.round(n / Math.min(1024, 300 + Math.sqrt(w * h) * 0.9)));
+      /* v2.4 NO TEMA MINIMETERS: TODAS as amostras da janela (1.024), cada uma um
+         quadradinho cheio de 2x2 px de interface (4x4 pixels de tela em Retina), preso
+         na grade, somando luz com o vizinho. Medido no vídeo contando as manchas: o
+         ponto isolado dele tem 4x4 pixels de tela e os vizinhos se deslocam de 2 em 2;
+         onde muitos caem juntos a cor estoura pro branco (a linha do kick em pé é
+         branca, 4 px de largura, com a franja vermelha). Com metade dos pontos, bolinha
+         borrada e meia opacidade, o nosso núcleo ficava vermelho-alaranjado e ralo. */
+      var mmPix = cupula && mmG;
+      if (mmPix) step = 1;
       if (s.guias >= 0.5) {
         c.strokeStyle = CV.gridInk(m, 0.06); c.lineWidth = 1;
         c.beginPath();
@@ -1512,7 +1548,7 @@
           px = cx + (encher ? CV.joelho(xx * gl, 1) : xx * gl) * RX; py = cy + (encher ? CV.joelho(yy * gl, 1) : yy * gl) * RY;
           cv = Math.min(1, Math.sqrt(xx * xx + yy * yy) * 1.4);
         }
-        var ai = (Math.min(0.999, 0.25 + (1 - i / n) * 0.75) * AN) | 0;
+        var ai = mmPix ? AN - 1 : (Math.min(0.999, 0.25 + (1 - i / n) * 0.75) * AN) | 0;
         if (rgbPt) {
           var wl2 = Math.pow(el, ONDA_MM.p), wm2 = Math.pow(em, ONDA_MM.p), wh2 = Math.pow(eh, ONDA_MM.p), ws = wl2 + wm2 + wh2 + 1e-20;
           var ql = Math.round(wl2 / ws * GQ), qm = Math.round(wm2 / ws * GQ); if (ql + qm > GQ) qm = GQ - ql;
@@ -1525,6 +1561,7 @@
       }
       CV.blend(m, c);
       var raio = Math.max(0.6, sz * 0.72), volta = Math.PI * 2;
+      var lado = 2;      // 2 px de interface (4x4 pixels de tela em Retina), como os dele
       if (rgbPt) {
         for (var bq2 = 0; bq2 < NBR; bq2++) {
           var qL = (bq2 / 5) | 0, qM = bq2 % 5, qH = 4 - qL - qM;
@@ -1535,9 +1572,17 @@
           var k2 = 255 / Math.max(r2, g2, b2, 1e-9), rgbB = [r2 * k2, g2 * k2, b2 * k2];
           for (var aq = 0; aq < AN; aq++) {
             var arrQ = bkR[bq2 * AN + aq]; if (!arrQ.length) continue;
-            c.fillStyle = CV.rgba(rgbB, logR ? 0.45 + (aq + 0.5) / AN * 0.5 : (aq + 0.5) / AN * 0.75);
             c.beginPath();
-            for (var q3 = 0; q3 < arrQ.length; q3 += 2) { c.moveTo(arrQ[q3] + raio, arrQ[q3 + 1]); c.arc(arrQ[q3], arrQ[q3 + 1], raio, 0, volta); }
+            if (mmPix) {
+              // o ponto isolado dele sai a ~88% da cor da banda (224 de 255 no vermelho)
+              c.fillStyle = CV.rgba(rgbB, 0.88);
+              for (var q4 = 0; q4 < arrQ.length; q4 += 2) {
+                c.rect(Math.floor(arrQ[q4]) - 1, Math.floor(arrQ[q4 + 1]) - 1, lado, lado);
+              }
+            } else {
+              c.fillStyle = CV.rgba(rgbB, (aq + 0.5) / AN * 0.75);
+              for (var q3 = 0; q3 < arrQ.length; q3 += 2) { c.moveTo(arrQ[q3] + raio, arrQ[q3 + 1]); c.arc(arrQ[q3], arrQ[q3 + 1], raio, 0, volta); }
+            }
             c.fill();
           }
         }
@@ -1584,8 +1629,9 @@
       c.fillStyle = CV.gridInk(m, 0.06); c.fillRect(0, Math.round(h / 2), w, 1);
       // trava no tom: YIN (diferença acumulada normalizada), a cada 2 quadros
       var per = st.per || 512;
-      st.pf = (st.pf || 0) + 1;
-      if (s.modo === 'pitch' && st.pf % 2 === 0) {
+      st.pf = (st.pf || 0) + dt;                       // v2.4: 60 vezes por segundo, em qualquer tela
+      if (s.modo === 'pitch' && st.pf >= 1 / 61) {
+        st.pf = 0;
         var win = Math.min(1024, n >> 1), lagMin = 20, lagMax = Math.min(760, n - win - 1);
         var off = n - win - lagMax; if (off < 0) { off = 0; lagMax = Math.max(lagMin + 1, n - win - 1); }
         var e0 = 0;
@@ -1620,12 +1666,13 @@
          contado nos ciclos do vídeo: 12 a 270 Hz, 20 a 440 Hz, 87 a 1,9 kHz), presa num
          cruzamento do zero que sobe pra ficar parada. Um ponto por pixel de tela,
          alternando o menor e o maior valor da coluna: no agudo vira a faixa densa dele. */
-      var mmS = CV.themeOf(m) === 'minimeters' && !(s.cmap && s.cmap !== 'auto') && s.modo === 'pitch' && d.ringL && d.wr > 4096;
+      var fimP = d.pos !== undefined ? d.pos : d.wr;   // v2.4: lê na cabeça de leitura
+      var mmS = CV.themeOf(m) === 'minimeters' && !(s.cmap && s.cmap !== 'auto') && s.modo === 'pitch' && d.ringL && fimP > 4096;
       var pts, X, Y, pkV = 0;
       if (mmS) {
         var srS = d.sr || 48000, RM = d.ringL.length - 1, RL = d.ringL, RRg = d.ringR;
         var spanS = s.ciclo === 'single' ? Math.max(64, Math.round(per)) : Math.round(0.0427 * srS);
-        var fimS = d.wr - 1, limS = Math.min(Math.round(per) + 64, 2400), trig = fimS;
+        var fimS = fimP - 1, limS = Math.min(Math.round(per) + 64, 2400), trig = fimS;
         var ant = (RL[fimS & RM] + RRg[fimS & RM]) * 0.5;
         for (var jz = 1; jz < limS; jz++) {
           var kz = (fimS - jz) & RM, cur = (RL[kz] + RRg[kz]) * 0.5;
@@ -1709,7 +1756,7 @@
       var c = m.ctx, w = m.w, h = m.h, s = m.s;
       var buf = offscreen(m, 'buf'), bc = buf.getContext('2d');
       if (!d) { c.clearRect(0, 0, w, h); return; }
-      var dx = CV.passo(m, 1.2 * s.speed * (m.dpr || 1), dt);
+      var dx = CV.passoAmostras(m, 72 * s.speed * (m.dpr || 1), CV.anda(d, dt), d.sr || 48000);
       var FMIN = 30, FMAX = 16000;
       if (dx >= 1) CV.registry.spectrogram.coluna(m, d, s, buf, bc, dx, FMIN, FMAX);
       CV.scrollRing.blit(m, 'buf', buf, c, w, h, m.st._pa || 0);
@@ -2096,7 +2143,8 @@
         ys[i] += ((wave + drift) * env * gate * pump - ys[i]) * k;
       }
       // tensão: a linha se alisa como corda
-      for (var pass = 0; pass < 2; pass++)
+      // v2.4: 2 passadas a 60 quadros, 1 a 120: a corda tem a mesma tensão por segundo
+      for (var pass = 0, npass = Math.max(1, Math.round(Math.min(0.05, dt) * 120)); pass < npass; pass++)
         for (i = 1; i < N - 1; i++) ys[i] += ((ys[i - 1] + ys[i + 1]) * 0.5 - ys[i]) * 0.5;
       // joelho macio só no desenho: a corda encosta na borda sem sair do painel
       var yd = m.st.yd && m.st.yd.length === N ? m.st.yd : (m.st.yd = new Float32Array(N));
@@ -2377,15 +2425,18 @@
       var estoura = d.beat ? (0.55 + 0.45 * Math.min(1.6, ax)) * (0.6 + 0.6 * Math.max(sm.soco, gS)) : 0;
       var tr = (sm.agudo * 0.7 + gS * 0.5) * Math.min(2, ax) * 20;
       var mono = CV.isMono(m), n = ps.length, i, j;
+      /* v2.4: a física pensada a 60 quadros, corrigida pro tamanho do quadro. A 120 o
+         empurrão entrava 2x por segundo a mais e o freio também: o bando ficava outro. */
+      var q60 = Math.max(0.25, Math.min(3, dt * 60)), amort = Math.pow(0.92, q60);
       for (i = 0; i < n; i++) {
         var p = ps[i];
         var dxc = tx - p.x, dyc = ty - p.y, dist = Math.sqrt(dxc * dxc + dyc * dyc) + 0.001;
-        var pull = (0.5 + energy * 1.6) * (0.25 + 0.75 * gate) * solta;
+        var pull = (0.5 + energy * 1.6) * (0.25 + 0.75 * gate) * solta * q60;
         p.vx += (dxc / dist) * pull; p.vy += (dyc / dist) * pull;
         if (estoura) { p.vx -= (dxc / dist) * (90 + p.b * 160) * estoura; p.vy -= (dyc / dist) * (90 + p.b * 160) * estoura; }
-        p.vx += (Math.random() - 0.5) * tr;
-        p.vy += (Math.random() - 0.5) * tr;
-        p.vx *= 0.92; p.vy *= 0.92;
+        p.vx += (Math.random() - 0.5) * tr * Math.sqrt(q60);
+        p.vy += (Math.random() - 0.5) * tr * Math.sqrt(q60);
+        p.vx *= amort; p.vy *= amort;
         p.x += p.vx * dt * 6; p.y += p.vy * dt * 6;
         if (p.x < 0) { p.x = 0; p.vx *= -0.6; } else if (p.x > w) { p.x = w; p.vx *= -0.6; }
         if (p.y < 0) { p.y = 0; p.vy *= -0.6; } else if (p.y > h) { p.y = h; p.vy *= -0.6; }

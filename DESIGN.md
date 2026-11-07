@@ -169,6 +169,18 @@ Pedido do Bruno: a música mexendo mais nos visuais, principalmente o grave, e c
 
 Todo módulo reage ao mouse, além do som. Estúdio informa no hover (frequência, nota, dB). Arte segue o cursor: o líquido do PSY entorta, o Ferro é atraído, os fios da Fita perseguem, o Túnel desloca o centro, o Caleidoscópio gira. A regra: encostar o mouse nunca quebra o visual, só puxa ele.
 
+## Tempo real e fluidez (v2.4)
+
+O som do computador chega em blocos. Se cada quadro lê sempre a amostra mais nova, a 120 quadros por segundo a maioria dos quadros não tem som novo: o estéreo e o osciloscópio param, a onda repete pedaço e o espectro anda aos trancos. O MiniMeters também anda em degraus, só que com blocos bem menores.
+
+**Cabeça de leitura.** Todo visual lê num ponto que anda no relógio da tela, um pouco atrás do bloco mais novo. Cada quadro ganha a fatia certa de som novo, e tudo anda liso. O recuo é medido ao vivo: o tamanho do bloco mais a tremida dele, nada além disso. Quando a fonte já chega junto do quadro, o recuo é zero.
+
+**Fluidez.** Em Áudio > Tempo real dá pra escolher Suave (padrão) ou Imediata. Imediata mostra o bloco assim que ele chega, com o menor atraso, e aceita os trancos. A tecla F mostra o bloco, o recuo e o atraso total, pra decidir olhando.
+
+**Estéreo no tema MiniMeters.** Os 1.024 pontos da janela, cada um um quadradinho de 2x2 px que soma luz com o vizinho. Onde muitos caem juntos a cor estoura pro branco, como no dele: a linha do kick sai branca com franja vermelha e o chimbal vira a cúpula colorida.
+
+**Mesmo comportamento a 60 e a 120.** Rastro, física do enxame, tensão da corda e a trava de tom do osciloscópio agora contam no relógio. Antes, a 120 quadros o rastro durava metade do tempo.
+
 ## Medidores no molde do MiniMeters (v2.3)
 
 O Bruno gravou a tela com o MiniMeters tocando um sinal de teste e mandou o print dos ajustes dele. Tudo abaixo foi medido nesse vídeo, quadro a quadro, contra o nosso desenho do mesmo sinal. Onde as seções da v2.1 e de agosto falam de espectro, onda, estéreo e osciloscópio, vale o que está aqui.

@@ -1,5 +1,37 @@
+<v24_tempo_real_novembro_2026>
+LEIA ESTE PRIMEIRO, depois o da v2.3. Rodada de 7/nov.
+PEDIDO DO BRUNO: "revise tudo pra deixar ainda mais fiel, especialmente o espectro (o do MiniMeters parece mais fluido, talvez com mais frames por segundo?) e o estéreo (o do MiniMeters é mais satisfatório)". Mesmo princípio de quadros e suavidade pra todos os visuais. E a resposta em tempo real pesa tanto quanto: menor atraso possível entre o som e a tela.
+
+O QUE O VÍDEO MOSTROU (de novo, quadro a quadro):
+- O MiniMeters também anda em degraus: na queda do rosa, o espectro desce 0, 2, 4, 6, 8, 11, 13 px de um quadro pro outro (média 6,3 px a 60 qps). O degrau mínimo é de 2 px = 256 amostras: o bloco de captura dele é pequeno (256 a 512 amostras). Estéreo e osciloscópio dele param em ~12% dos quadros a 60 qps (quadro sem bloco novo). O espectro dele não para porque a média anda sozinha.
+- O nosso caminho nativo (native-recorder-nodejs, ScreenCaptureKit) não deixa escolher o bloco. Se ele vier de ~1.024 amostras (21 ms), lendo sempre a amostra mais nova, a 120 Hz 61% dos quadros ficam sem som novo e o resto pula 1.024 de uma vez (simulado na bancada). É o "menos fluido". NÃO MEDIDO NO MAC: pedir pro Bruno abrir o HUD (F) e ler "bloco" e "intervalo".
+
+CABEÇA DE LEITURA (audio.js, avancaCabeca):
+- O visual não lê mais no fim do anel (wr). Lê em pos = piso de ph, a cabeça de leitura, que anda dt de som por quadro no relógio da tela.
+- est = wr + (agora - hora do último bloco) x sr. A cabeça mira est - recuo e corrige devagar (0,3 s). Nunca passa de wr: se alcançar, segura e conta em underruns. Nunca volta no tempo. Desvio maior que 120 ms: pula direto.
+- Recuo (lagMs) = 2º maior intervalo entre os últimos 48 blocos + 1 ms (recuoAlvo). Sobe na hora, desce em 2 s. Captura parada (sem bloco por 3x o recuo + 50 ms): não inventa relógio.
+- Fonte drenada no próprio quadro (SAB, analyser: feed(..., sync=true) e drainSab) lê no fim, recuo zero. Só fonte que chega sozinha (IPC do nativo, mensagem do tap sem SAB) usa a cabeça.
+- engine.fluidez: 'suave' (padrão, cabeça) ou 'imediata' (sempre o bloco mais novo, o comportamento da v2.3). Ajuste em Áudio > Tempo real > Fluidez, salvo em state.fluidez.
+- engine.adv = amostras que a cabeça andou no quadro. latencyMs agora soma o recuo (a gravação de vídeo compensa sozinha).
+- Bloco com hora de origem: main.js manda cv-native-audio com performance.timeOrigin + performance.now() do processo principal; pushNativePCM(buf, tSrc) usa essa hora no relógio. A tela ocupada desenhando não vira tremida no relógio do som.
+- Medido na bancada (blocos de 1.024 com 3 ms de tremida, 120 Hz): imediata = 61% dos quadros parados; suave = 400 amostras por quadro com desvio de 1, recuo 24 ms. Na queda do espectro: imediata 0, 0, 8, 0, 8 px; suave 3, 3, 3 px. Bloco de 128 amostras: recuo de 4 ms.
+TUDO LÊ NA CABEÇA: recortes de tempo (time, timeL, timeR), nível rápido, FFT 1.024, spectrum(n), LUFS e beat processados até pos, osciloscópio MiniMeters e barras finas do loudness (d.pos). O espectro faz a média pelas AMOSTRAS andadas (0,9^(adv/256)), como o dele. Onda e espectrograma rolam pelas amostras (CV.anda + CV.passoAmostras): cada pixel é um pedaço de som que existiu, sem repetir nem engolir bloco.
+ESTÉREO NO TEMA MINIMETERS:
+- Todas as 1.024 amostras da janela, cada uma um quadradinho de 2x2 px de interface (4x4 px de tela em Retina), preso na grade, somando luz (lighter) a 88% da cor da banda. Medido contando manchas no vídeo: o ponto isolado dele tem 4x4 px e os vizinhos andam de 2 em 2; a linha do kick em pé tem 4 px e é branca (muitos pontos somados), com franja vermelha.
+- Raio em dB (60 dB), conferido em 406 quadros do vídeo: erro de 10% do raio (linear 15%, autoganho 12%). O Encher só levanta fonte baixa: pico abaixo de -24 dB, no máximo 12 dB (antes empurrava todo pico pra borda e o tom de -18 dB ia pro topo; o dele fica a 60%).
+- Sem rastro nesse tema (cada quadro limpo), como antes.
+QUADROS E SUAVIDADE EM TODO VISUAL: CV.fade apaga no relógio (fatia de 60 qps elevada a dt x 60; CV.dtQuadro vem do laço do app, por painel, com o dt da arte quando ela pula quadro). YIN do osciloscópio a 60 Hz em qualquer tela (era a cada 2 quadros). Corda (wavelayers): 2 passadas de tensão a 60 qps, 1 a 120. Enxame: empurrão e freio corrigidos pelo tamanho do quadro.
+CAPTURA: Áudio > Tempo real > Captura: Nativa (padrão, ScreenCaptureKit pelo módulo) ou Do sistema (loopback do Chromium, Core Audio no macOS 15+; chega pelo SAB, drenado no quadro). engine.estereo mede se o caminho é estéreo de verdade (energia de L-R contra L+R em ~1 s); o estado e o HUD dizem mono quando for.
+HUD (F): linha nova "fluidez suave · recuo X ms · intervalo Y ms · faltou Z". "bloco" e "nativo/direto/tap" continuam.
+SMOKE: 168 checagens. Seção nova "cabeça de leitura (tempo real)" (7). Teste do espectro em 220 Hz agora alimenta com sync e chama update antes de ler.
+BANCADA: lab/harness.html ganhou runBlocos (captura em blocos com relógio de mentira, performance.now trocado) e lab/blocos.js. run() normal alimenta com sync (determinístico).
+DESEMPENHO (Chrome sem GPU, 678x330 em 2x): estéreo 1,35 ms (era 3,7 com bolinhas), osciloscópio 3,8, onda 3,1, espectro 12,3.
+PENDENTE: o Bruno ler o HUD no Mac com música: fps, bloco, recuo, intervalo, faltou, som → olho. Testar Captura "Do sistema": se vier estéreo e com bloco pequeno, é o melhor dos dois mundos (sem recuo). Se o recuo incomodar, Fluidez "Imediata".
+VERSÃO: 2.4.0 no package.json e no Sobre.
+</v24_tempo_real_novembro_2026>
+
 <v23_molde_minimeters_novembro_2026>
-LEIA ESTE PRIMEIRO, depois o da v2.2, o da v2.1 e o da v2. Quarta rodada de novembro (noite de 5/nov).
+Leia depois do bloco da v2.4. Quarta rodada de novembro (noite de 5/nov).
 PEDIDO DO BRUNO: gravou a tela com o MiniMeters tocando o sinal de teste (medicao/) e mandou o print dos ajustes do Espectro dele. "Analise os resultados. Deixe o mais parecido e próximo possível." Foco no espectro, valendo pros outros medidores também.
 AJUSTES DELE NO PRINT, agora o nosso padrão: Espectro em Os dois (linha + barras), suavidade 90%, tilt 4,5 dB/oitava, FFT 4096, escala Log, Mid e Side. Onda com Canal 2 desligado.
 COMO FOI MEDIDO: vídeo a 60 quadros, 3600 px de largura (Retina). Sincronia pelo clique: tempo do vídeo = tempo do sinal + 2,434 s. Quadro com ffmpeg -ss ANTES do -i (o filtro select decodifica do começo e estoura o tempo). Bancada em lab/ (fora do repo): harness.html alimenta o AudioEngine com o WAV em blocos de 1/60 s e desenha o módulo no Chrome headless (puppeteer-core) nos mesmos instantes do vídeo; compara.py monta a folha com o MiniMeters em cima e o Caramujo embaixo.

@@ -147,6 +147,22 @@
     this.ringR = new Float32Array(RING);
     this.wr = 0;               // total de amostras escritas (cresce sempre)
     this.rd = 0;               // já consumido pelo LUFS/beat
+    /* v2.4 CABEÇA DE LEITURA. O som do sistema chega em BLOCOS: o ScreenCaptureKit
+       manda uns 20 ms de uma vez. Lendo sempre a amostra mais nova, a 120 quadros por
+       segundo 2 de cada 3 quadros viam o MESMO som: o estéreo e o osciloscópio
+       paravam, a onda repetia pedaço e o espectro andava aos trancos. A cabeça anda
+       no relógio da tela, atrás do bloco mais novo só o tanto que os blocos atrasam
+       (medido ao vivo, bloco a bloco), e todo visual lê dali: cada quadro ganha som
+       novo, na quantidade certa. Fonte que já chega a cada quadro (SAB) lê no fim. */
+    this.ph = 0;               // cabeça de leitura (fracionária)
+    this.pos = 0;              // fim da janela de TODO visual neste quadro (= piso de ph)
+    this.adv = 0;              // quantas amostras a cabeça andou neste quadro
+    this.fluidez = 'suave';    // 'suave' (cabeça) | 'imediata' (sempre o bloco mais novo)
+    this.lagMs = 0;            // quanto a cabeça fica atrás do bloco mais novo
+    this.gapMs = 0;            // maior intervalo recente entre dois blocos
+    this.underruns = 0;        // quadros em que a cabeça alcançou o fim (som atrasou)
+    this.async = false;        // fonte que chega por conta própria (IPC, mensagem)
+    this._arrT = 0; this._gaps = new Float32Array(48); this._gi = 0; this._gn = 0;
     this.lastFeedAt = 0;       // quando o último bloco chegou (pra medir latência)
     this.chunkMs = 0;          // tamanho do bloco da captura, em ms
     this.hasRing = false;
@@ -173,7 +189,8 @@
 
   /* ================= anel: quem alimenta e quem lê ================= */
 
-  AudioEngine.prototype.feed = function (l, r, frames) {
+  /* sync = a fonte é drenada no próprio quadro (analyser): chega junto da tela */
+  AudioEngine.prototype.feed = function (l, r, frames, sync) {
     var L = this.ringL, R = this.ringR, mask = RING - 1, w = this.wr & mask;
     for (var i = 0; i < frames; i++) {
       L[(w + i) & mask] = l[i];
@@ -186,10 +203,32 @@
     var ms = frames / this.sr * 1000;
     this.chunkMs = this.chunkMs ? this.chunkMs * 0.9 + ms * 0.1 : ms;
     this.lastFeedAt = now;
+    this.chegou(now, !sync);
   };
 
-  // PCM 16-bit intercalado (L,R,L,R…) direto no anel, sem passar pelo grafo
-  AudioEngine.prototype.pushNativePCM = function (buf) {
+  /* anota a chegada do bloco: o intervalo entre blocos decide o recuo da cabeça */
+  AudioEngine.prototype.chegou = function (now, assinc) {
+    if (this._arrT) {
+      var g = now - this._arrT;
+      if (g >= 0 && g < 250) { this._gaps[this._gi] = g; this._gi = (this._gi + 1) % this._gaps.length; if (this._gn < this._gaps.length) this._gn++; }
+    }
+    this._arrT = now;
+    this.async = assinc;
+  };
+
+  /* RECUO DA CABEÇA, em ms: o 2º maior intervalo entre os últimos 48 blocos (~1 s
+     de captura nativa), mais 1 ms. O maior sozinho deixava um soluço raro do sistema
+     segurar a fila inteira lá em cima. Cai devagar (2 s) e sobe na hora. */
+  AudioEngine.prototype.recuoAlvo = function () {
+    var n = this._gn, g = this._gaps, a = 0, b = 0;
+    for (var i = 0; i < n; i++) { var v = g[i]; if (v > a) { b = a; a = v; } else if (v > b) b = v; }
+    return Math.min(80, (n > 3 ? b : a) + 1);
+  };
+
+  /* PCM 16-bit intercalado (L,R,L,R…) direto no anel, sem passar pelo grafo.
+     tSrc = hora (época, ms) em que o bloco chegou no processo principal: vira o
+     relógio do bloco, sem a tremida da travessia pra cá. */
+  AudioEngine.prototype.pushNativePCM = function (buf, tSrc) {
     if (!buf) return;
     var u8 = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf.buffer || buf);
     var i16 = new Int16Array(u8.buffer, u8.byteOffset, Math.floor(u8.byteLength / 2));
@@ -204,9 +243,14 @@
     this.wr += frames;
     this.hasRing = true;
     var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (tSrc && typeof performance !== 'undefined' && performance.timeOrigin) {
+      var tl = tSrc - performance.timeOrigin;              // a hora de lá, no relógio daqui
+      if (tl <= now && tl > now - 200) now = tl;           // relógio esquisito: fica a hora da chegada
+    }
     var ms = frames / this.sr * 1000;
     this.chunkMs = this.chunkMs ? this.chunkMs * 0.9 + ms * 0.1 : ms;
     this.lastFeedAt = now;
+    this.chegou(now, true);
     // alimenta a gravação, se estiver ligada (só então o grafo existe)
     if (this.srcNode) {
       var fl = new Float32Array(frames), fr = new Float32Array(frames);
@@ -622,6 +666,7 @@
     var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     this.chunkMs = 2.7;   // o SAB entrega a cada bloco de render (128 amostras)
     this.lastFeedAt = now;
+    this.chegou(now, false);
   };
 
   AudioEngine.prototype.dropAnalyser = function () {
@@ -666,7 +711,7 @@
     var n = Math.round(this.sr * (dt || 1 / 60));
     if (n < 64) n = 64; if (n > total) n = total;
     var off = total - n;
-    this.feed(this.fbL.subarray(off), this.fbR.subarray(off), n);
+    this.feed(this.fbL.subarray(off), this.fbR.subarray(off), n, true);
     this.usedFallback = true;
     return true;
   };
@@ -729,6 +774,9 @@
     this.synthPaused = false;
     this.hasRing = false;
     this.wr = 0; this.rd = 0; this.sabRead = 0;
+    this.ph = 0; this.pos = 0; this.adv = 0; this.lagMs = 0; this.gapMs = 0;
+    this._arrT = 0; this._gn = 0; this._gi = 0; this.underruns = 0;
+    this.estereo = undefined; this._eS = 0; this._eM = 0;
     if (this.sab && typeof Atomics !== 'undefined') { try { Atomics.store(this.sab.ctl, 0, 0); } catch (e) {} }
     this.resetLufs();
     this.setupBeat();
@@ -897,7 +945,7 @@
       self.nativeOn = true;
       if (!self._nativeWired) {
         self._nativeWired = true;
-        window.caramujo.onNativeAudio(function (buf) { self.pushNativePCM(buf); });
+        window.caramujo.onNativeAudio(function (buf, t) { self.pushNativePCM(buf, t); });
         if (window.caramujo.onNativeError) window.caramujo.onNativeError(function () {});
       }
       return 'native';
@@ -946,6 +994,37 @@
     return el.play();
   };
 
+  /* A CABEÇA ANDA NO RELÓGIO DA TELA. est = onde o som está agora (o fim do bloco
+     mais novo mais o tempo desde que ele chegou); a cabeça mira est menos o recuo e
+     anda dt de som por quadro, corrigindo devagar (0,3 s) o desvio entre os dois
+     relógios. Nunca passa do que já chegou: se alcançar, segura e conta (underrun).
+     Fonte drenada no quadro (SAB, analyser) ou modo "imediata": lê no fim, como antes. */
+  AudioEngine.prototype.avancaCabeca = function (dt, now) {
+    var sr = this.sr, wr = this.wr, ph;
+    if (!this.async || this.fluidez === 'imediata' || !this._arrT) {
+      ph = wr;
+      this.lagMs += (0 - this.lagMs) * Math.min(1, dt * 4);
+    } else {
+      var alvoLag = this.recuoAlvo();
+      this.gapMs = alvoLag - 1;
+      if (alvoLag > this.lagMs) this.lagMs = alvoLag;                       // sobe na hora
+      else this.lagMs += (alvoLag - this.lagMs) * Math.min(1, dt / 2);      // desce em 2 s
+      var desde = now - this._arrT;
+      if (desde > this.lagMs * 3 + 50) desde = 0;     // captura parada: não inventa relógio
+      var est = wr + desde * sr / 1000, alvo = est - this.lagMs * sr / 1000;
+      ph = this.ph + dt * sr;
+      var err = alvo - ph;
+      if (err > sr * 0.12 || err < -sr * 0.12) ph = alvo;       // começo, troca de fonte, engasgo grande
+      else ph += err * Math.min(1, dt / 0.3);
+      if (ph > wr) { ph = wr; this.underruns++; }
+    }
+    if (ph < wr - RING * 0.5) ph = wr - RING * 0.5;
+    if (ph < this.ph) ph = this.ph;                   // nunca volta no tempo
+    var p = Math.floor(ph);
+    this.adv = Math.max(0, p - this.pos);
+    this.ph = ph; this.pos = p;
+  };
+
   /* ================= ANÁLISE DO QUADRO ================= */
   AudioEngine.prototype.update = function (dt) {
     if (this.sourceKind === 'none') return;
@@ -963,13 +1042,26 @@
     var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     var mask = RING - 1, i;
 
-    // 2) LUFS e beat: TODAS as amostras novas, sem pular nem repetir
-    var from = this.rd, to = this.wr;
+    // 1b) a cabeça de leitura: onde este quadro lê o som
+    this.avancaCabeca(dt, now);
+    var P = this.pos;
+
+    // 2) LUFS e beat: TODAS as amostras até a cabeça, sem pular nem repetir
+    var from = this.rd, to = P;
     if (to - from > RING) from = to - RING;         // ficou parado demais: pula o que já perdeu
     if (to > from) {
       this.processLufs(from, to);
       this.processBeat(from, to);
       this.rd = to;
+      /* v2.4: esse caminho é estéreo de verdade? Energia da diferença contra a soma, ~1 s.
+         O loopback do sistema pode chegar em mono (ScreenCaptureKit) ou em estéreo (Core
+         Audio, macOS 15+): o ajuste mostra o que chegou, em vez de chutar "mono". */
+      var eS = 0, eM = 0, rL = this.ringL, rR = this.ringR;
+      for (i = from; i < to; i += 4) { var kq = i & mask, aa = rL[kq], bb = rR[kq], dS = aa - bb, dM = aa + bb; eS += dS * dS; eM += dM * dM; }
+      var kE = Math.min(1, dt);
+      this._eS = (this._eS || 0) + (eS - (this._eS || 0)) * kE;
+      this._eM = (this._eM || 0) + (eM - (this._eM || 0)) * kE;
+      if (this._eM > 1e-4) this.estereo = this._eS > this._eM * 1e-5;
     }
     this.beat = this.beatHit;
     this.beatHit = false;
@@ -977,15 +1069,15 @@
     this.updateReacao(dt);
     this.lufsAvgVal = this.lufsI;
 
-    // 3) recortes de tempo (o mais NOVO no fim, como o AnalyserNode entregava)
-    var t = this.time, n2 = t.length, base = (this.wr - n2) & mask;
+    // 3) recortes de tempo, terminando na cabeça (o mais novo que o quadro mostra)
+    var t = this.time, n2 = t.length, base = (P - n2) & mask;
     var L = this.ringL, R = this.ringR;
     for (i = 0; i < n2; i++) { var k = (base + i) & mask; t[i] = (L[k] + R[k]) * 0.5; }
-    var nl = this.timeL.length, bl = (this.wr - nl) & mask;
+    var nl = this.timeL.length, bl = (P - nl) & mask;
     for (i = 0; i < nl; i++) { var k2 = (bl + i) & mask; this.timeL[i] = L[k2]; this.timeR[i] = R[k2]; }
 
     // 4) nível instantâneo: janela de 5ms, não de 21ms
-    var fastN = Math.min(FAST_N, this.wr), fb = (this.wr - fastN) & mask, rms = 0, pk = 0;
+    var fastN = Math.min(FAST_N, P), fb = (P - fastN) & mask, rms = 0, pk = 0;
     for (i = 0; i < fastN; i++) {
       var kk = (fb + i) & mask, v = (L[kk] + R[kk]) * 0.5, a = v < 0 ? -v : v;
       rms += v * v; if (a > pk) pk = a;
@@ -1030,9 +1122,9 @@
     this.high += (high - this.high) * (high > this.high ? 0.9 : kd * 0.9);
     this.level += (rms - this.level) * (rms > this.level ? 0.92 : kd);
 
-    // 7) latência honesta: idade da amostra mais nova + metade da janela rápida
+    // 7) latência honesta: idade da amostra mais nova + o recuo da cabeça + metade da janela rápida
     var age = Math.max(0, now - this.lastFeedAt);
-    var lat = age + this.chunkMs * 0.5 + (FAST_N * 0.5 / this.sr) * 1000;
+    var lat = age + (this.wr - P) / this.sr * 1000 + (this.async ? 0 : this.chunkMs * 0.5) + (FAST_N * 0.5 / this.sr) * 1000;
     if (this.usedFallback) lat += (FFT_N * 0.5 / this.sr) * 1000;
     this.latencyMs = this.latencyMs ? this.latencyMs * 0.85 + lat * 0.15 : lat;
   };
@@ -1064,7 +1156,7 @@
     this._specN = n; this._specDb = sl.db;    // compatibilidade com quem lia esses nomes
     if (sl.frame === this._frame) return sl.db;
     var mask = RING - 1, L = this.ringL, R = this.ringR, buf = sl.buf;
-    var have = Math.min(this.wr, n), base = (this.wr - have) & mask;
+    var P = this.pos || this.wr, have = Math.min(P, n), base = (P - have) & mask;
     var i, pad = n - have;
     for (i = 0; i < pad; i++) buf[i] = 0;
     if (ch === 'l') { for (i = 0; i < have; i++) buf[pad + i] = L[(base + i) & mask]; }

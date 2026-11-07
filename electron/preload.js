@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('caramujo', {
   nativeWhy: () => ipcRenderer.invoke('cv-native-why'),
   nativeStart: () => ipcRenderer.invoke('cv-native-start'),
   nativeStop: () => ipcRenderer.invoke('cv-native-stop'),
-  onNativeAudio: (cb) => ipcRenderer.on('cv-native-audio', (e, buf) => cb(buf)),
+  onNativeAudio: (cb) => ipcRenderer.on('cv-native-audio', (e, buf, t) => cb(buf, t)),
   onNativeError: (cb) => ipcRenderer.on('cv-native-error', (e, msg) => cb(msg)),
   onBounds: (cb) => ipcRenderer.on('cv-bounds', (e, b) => cb(b)),
   // gravação salva direto em Downloads

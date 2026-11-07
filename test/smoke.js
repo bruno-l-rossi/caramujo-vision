@@ -160,11 +160,10 @@ check('motor roda com a rede de segurança (AnalyserNode)', engine.hasSignal() &
   for (let off = 0; off < sr; off += chunk) { E.feed(new Float32Array(chunk), new Float32Array(chunk), chunk); E.update(chunk / sr); }
   check('silêncio zera o nível', E.rms < 0.001 && E.level < 0.01, 'rms=' + E.rms.toFixed(5));
   [1024, 4096, 16384].forEach((n) => {
-    E._frame = (E._frame || 0) + 1;
     const buf = new Float32Array(9600);
     for (let i = 0; i < buf.length; i++) buf[i] = Math.sin(2 * Math.PI * 220 * i / 48000) * 0.4;
-    E.feed(buf, buf, buf.length);
-    E._frame++;
+    E.feed(buf, buf, buf.length, true);       // como o SAB: chega junto do quadro
+    E.update(buf.length / 48000);             // o espectro lê onde a cabeça do quadro está
     const db = E.spectrum(n), bin = Math.round(220 / E.specBinHz);
     check('espectro FFT ' + n + ' acha o tom de 220Hz', db.length === n / 2 && db[bin] > -30, db[bin].toFixed(1) + ' dBFS');
   });
@@ -175,6 +174,57 @@ check('motor roda com a rede de segurança (AnalyserNode)', engine.hasSignal() &
   const E = new g.AudioEngine();
   E.sourceKind = 'system'; E.sab = { ctl: new Int32Array(2), l: new Float32Array(8), r: new Float32Array(8) };
   check('o caminho do SharedArrayBuffer conta como sinal (era tela preta no loopback)', E.hasSignal() === true);
+}
+
+/* ================= v2.4: cabeça de leitura ================= */
+console.log('cabeça de leitura (tempo real):');
+{
+  /* A captura do sistema chega em blocos (ScreenCaptureKit: ~1.024 amostras, 21 ms).
+     Simula 2 s com relógio de mentira: blocos com tremida de até 3 ms, tela a 120 Hz. */
+  const sr = 48000, perf = g.performance, nowOrig = perf.now;
+  const simula = (fluidez, B, jitMs, fps) => {
+    const E = new g.AudioEngine();
+    E.sourceKind = 'system'; E.nativeOn = true; E.sr = sr; E.setupLufs(sr); E.setupBeat(); E.fluidez = fluidez;
+    let sim = 0, sement = 7, nS = 0, arr = B / sr + 0.002;
+    const rnd = () => { sement = (sement * 1103515245 + 12345) & 0x7fffffff; return sement / 0x7fffffff; };
+    const bloco = new Float32Array(B), advs = [];
+    perf.now = () => sim * 1000;
+    try {
+      for (let f = 0; f < fps * 2; f++) {
+        const tf = f / fps;
+        while (arr <= tf) {
+          for (let i = 0; i < B; i++) bloco[i] = 0.3 * Math.sin(2 * Math.PI * 110 * (nS + i) / sr);
+          sim = arr; E.feed(bloco, bloco, B); nS += B;
+          arr = Math.max(arr + 0.0005, (nS + B) / sr + 0.002 + rnd() * jitMs / 1000);
+        }
+        sim = tf; E.update(1 / fps);
+        if (tf >= 0.5) advs.push(E.adv);
+      }
+    } finally { perf.now = nowOrig; }
+    const media = advs.reduce((a, b) => a + b, 0) / advs.length;
+    const desvio = Math.sqrt(advs.reduce((a, b) => a + (b - media) * (b - media), 0) / advs.length);
+    return { E, advs, media, desvio, zeros: advs.filter((a) => a === 0).length };
+  };
+  const im = simula('imediata', 1024, 3, 120), su = simula('suave', 1024, 3, 120), pq = simula('suave', 128, 0.5, 120);
+  check('modo imediato com blocos de 21 ms: a maioria dos quadros a 120 Hz fica sem som novo (era o tranco)',
+    im.zeros / im.advs.length > 0.45, Math.round(im.zeros / im.advs.length * 100) + '% dos quadros parados');
+  check('modo suave: todo quadro anda o mesmo tanto de som (400 amostras a 120 Hz, sem parar nem pular)',
+    su.zeros === 0 && Math.abs(su.media - 400) < 8 && su.desvio < 12, 'média ' + su.media.toFixed(0) + ' · desvio ' + su.desvio.toFixed(1));
+  check('o recuo da cabeça se ajusta ao bloco: ~1 bloco + tremida (21 ms + 3 ms)',
+    su.E.lagMs > 20 && su.E.lagMs < 28 && su.E.underruns <= 4, su.E.lagMs.toFixed(1) + ' ms · ' + su.E.underruns + ' quadros sem som');
+  check('bloco pequeno (128 amostras) quase não atrasa nada: recuo abaixo de 5 ms', pq.E.lagMs < 5, pq.E.lagMs.toFixed(1) + ' ms');
+  // o caminho do SAB é drenado no próprio quadro: lê no fim, recuo zero
+  const Es = new g.AudioEngine(); Es.sourceKind = 'system'; Es.sr = sr;
+  for (let q = 0; q < 30; q++) { Es.feed(new Float32Array(400), new Float32Array(400), 400, true); Es.update(1 / 120); }
+  check('fonte que chega junto do quadro lê no fim (sem recuo)', Es.pos === Es.wr && Es.lagMs < 0.5, 'pos ' + Es.pos + ' de ' + Es.wr);
+  // estéreo de verdade ou mono: o ajuste mostra o que chegou
+  const Ee = new g.AudioEngine(); Ee.sourceKind = 'system'; Ee.sr = sr;
+  const l = new Float32Array(800), r = new Float32Array(800);
+  for (let q = 0; q < 90; q++) { for (let i = 0; i < 800; i++) { l[i] = 0.3 * Math.sin(i * 0.05); r[i] = q < 45 ? l[i] : 0.3 * Math.sin(i * 0.07); } Ee.feed(l, r, 800, true); Ee.update(1 / 60); if (q === 44) Ee._mono = Ee.estereo; }
+  check('mede se o caminho é estéreo de verdade (mono = L igual a R)', Ee._mono === false && Ee.estereo === true, 'mono → ' + Ee._mono + ' · estéreo → ' + Ee.estereo);
+  // o rastro apaga no relógio: 2 quadros de 120 Hz tiram o mesmo que 1 de 60
+  const a60 = g.CV.trailClear(0.62), um120 = 1 - Math.pow(1 - a60, 0.5);
+  check('rastro apaga no relógio, não no quadro (2 quadros a 120 Hz = 1 a 60 Hz)', Math.abs((1 - (1 - um120) * (1 - um120)) - a60) < 1e-9, 'fatia a 60: ' + a60.toFixed(3) + ' · a 120: ' + um120.toFixed(3));
 }
 
 /* ================= cada visual, em todo tema e tamanho ================= */
@@ -471,6 +521,7 @@ console.log('medidores no molde do MiniMeters:');
         if (k === 'arc') return (x, y) => log.arc.push([x, y]);
         if (k === 'fillText') return (s) => log.fillText.push(String(s));
         if (k === 'fillRect') return (x, y, w, h) => log.fillRect.push([x, y, w, h, t.fillStyle]);
+        if (k === 'rect') return (x, y, w, h) => log.arc.push([x + w / 2, y + h / 2]);   // o ponto quadrado conta como ponto
         if (k === 'lineTo') return () => { log.lineTo++; };
         if (k === 'createLinearGradient') return () => ({ addColorStop() {} });
         if (k === 'createPattern') return () => ({ setTransform() {} });
@@ -501,9 +552,10 @@ console.log('medidores no molde do MiniMeters:');
   const tom = (f, a) => (n) => a * Math.sin(2 * Math.PI * f * n / sr), zero = () => 0;
   check('Onda com um canal só por padrão, como a dele (Canal 2: Off)', CV.registry.wavescroll.defaults.ch2 === 'off');
   // e rola na velocidade dele: no beat de 90 BPM do vídeo, um kick a cada 230 px de Retina
-  const passoAntes = CV.passo; let andou = 0;
-  CV.passo = function (mm, p, dt) { const dx = passoAntes(mm, p, dt); if (mm.modId === 'wavescroll') andou += dx; return dx; };
-  try { roda('wavescroll', 446, 127, 1, tom(440, 0.25), tom(440, 0.25)); } finally { CV.passo = passoAntes; }
+  // v2.4: a onda anda pelas amostras que a cabeça de leitura andou (CV.passoAmostras)
+  const passoAntes = CV.passoAmostras; let andou = 0;
+  CV.passoAmostras = function (mm, p, a, r) { const dx = passoAntes(mm, p, a, r); if (mm.modId === 'wavescroll') andou += dx; return dx; };
+  try { roda('wavescroll', 446, 127, 1, tom(440, 0.25), tom(440, 0.25)); } finally { CV.passoAmostras = passoAntes; }
   check('Onda rola como a dele: 345 px de dispositivo por segundo em Retina (a v2.2 fazia 168)', Math.abs(andou - 345) <= 3, andou + ' px em 1 s');
   const c50 = CV.corMultibanda(1, 0.12, 0), c1k = CV.corMultibanda(0.2, 0.9, 0.3), c6k = CV.corMultibanda(0, 0.15, 1);
   check('multibanda dele: grave vermelho, 1 kHz verde, agudo azul (uma cor por coluna, sem camadas)',
@@ -722,7 +774,11 @@ check('o número do LUFS continua crescendo com o painel', CV.fsBig({ w: 900, h:
   check('osciloscópio liso: até 900 segmentos (era 2.896 chamadas por quadro), em curva fora do tema MiniMeters',
     segO > 0 && segO <= 900 && ((sc.quadraticCurveTo || 0) > 0 || CV.theme === 'minimeters'), segO + ' segmentos');
   const go = mede('gonio');
-  check('estéreo em ponto redondo, sem quadradinho de areia', (go.arc || 0) > 0 && !(go.rect || 0), (go.arc || 0) + ' pontos');
+  /* v2.4: no tema MiniMeters o ponto é o quadradinho nítido de 2 px dele, num caminho
+     por cor (rect + um fill por tom), nunca um fillRect por ponto. Nos outros, bolinha. */
+  if (CV.theme === 'minimeters') check('estéreo em quadradinhos de 2x2 px num caminho por cor (o ponto do MiniMeters), sem fillRect por ponto',
+    (go.rect || 0) > 500 && (go.fill || 0) <= 30 && (go.fillRect || 0) < 5, (go.rect || 0) + ' pontos · ' + (go.fill || 0) + ' fills');
+  else check('estéreo em ponto redondo, sem quadradinho de areia', (go.arc || 0) > 0 && !(go.rect || 0), (go.arc || 0) + ' pontos');
 }
 check('o desenho dorme no silêncio depois do fade', /dormindo = true/.test(srcApp) && /if \(silFade <= 0 && !gravando\)/.test(srcApp));
 check('o fundo vem do CSS: nada de pintar o fundo de todo painel a cada quadro',
