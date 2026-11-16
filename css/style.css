@@ -642,8 +642,11 @@ body.narrow .fr { grid-template-columns: 86px minmax(0, 1fr); }
 }
 #empty.hidden { display: none; }
 #emptymsg { color: var(--text); font: 500 12px/1.4 var(--ui); letter-spacing: 0.02em; }
+#emptyacts { display: none; gap: 8px; justify-content: center; }
+#empty.erro #emptyacts { display: flex; }
+#emptyretry,
 #emptybtn {
-  display: none;
+  display: inline-block;
   height: 28px;
   padding: 0 13px;
   border: 1px solid var(--line-2);
@@ -653,8 +656,8 @@ body.narrow .fr { grid-template-columns: 86px minmax(0, 1fr); }
   cursor: pointer;
   pointer-events: auto;
 }
+#emptyretry:hover,
 #emptybtn:hover { background: var(--surface-hi); }
-#empty.erro #emptybtn { display: inline-block; }
 #empty.quieto { opacity: 0.55; }
 body.set-open #empty { top: calc((100% - var(--set-h)) / 2); }
 @media (max-height: 120px) { #empty { flex-direction: row; } }

@@ -1,7 +1,7 @@
 {
   "name": "caramujo-vision",
   "productName": "Caramujo Vision",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Visualizador de audio em tempo real: medidores de estudio e arte que reage a musica",
   "author": "rideblan",
   "license": "UNLICENSED",
@@ -20,8 +20,8 @@
     "native-recorder-nodejs": "^1.2.0"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0"
   },
   "build": {
     "appId": "com.caramujo.vision",

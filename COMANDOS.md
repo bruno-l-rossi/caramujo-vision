@@ -9,17 +9,18 @@ cd ~/Documents/Claude\ Cowork/OUTPUTS/caramujo-vision
 ## Rodar e testar
 
 ```
+npm install
 npm test
 npm start
 ```
 
-`npm test` roda as 168 checagens e leva poucos segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
+O `npm install` só é preciso depois de atualizar o `package.json` (a v2.5 sobe o Electron pra 45). `npm test` roda as 184 checagens e leva poucos segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
 
-Dentro do app: `S` abre os ajustes, `P` pausa, `T` troca o tema, `F` mostra fps e o atraso do som, `H` deixa a barra de ferramentas fixa. `Esc` fecha o que estiver aberto.
+Dentro do app: `S` abre os ajustes, `P` pausa, `T` troca o tema, `F` mostra fps e o atraso do som (`C` copia o diagnóstico), `D` troca o detalhe, `1` a `9` trocam o preset, `R` grava o visual sob o mouse, `H` deixa a barra de ferramentas fixa. `Esc` fecha o que estiver aberto.
 
-## Voltar pra v1
+## Voltar pra uma versão anterior
 
-A v1 inteira está guardada na pasta `backup-v1/`, do jeito que estava antes da repaginação. Pra voltar, copie os arquivos de lá por cima dos daqui (e rode `npm test` depois). O estado salvo da v1 (`cv-state-v7`) continua intacto no app: a v2 lê ele, mas não apaga.
+As pastas de backup foram apagadas na v2.5: o histórico mora no git. Pra voltar, `git log --oneline` acha o commit e `git checkout <commit> -- .` traz os arquivos. Se o Electron 45 der problema no Mac, volte `electron` pra `^33.0.0` e `electron-builder` pra `^24.13.3` no `package.json` e rode `npm install`.
 
 ## Medir o custo do acabamento de filme
 

@@ -169,6 +169,16 @@ Pedido do Bruno: a música mexendo mais nos visuais, principalmente o grave, e c
 
 Todo módulo reage ao mouse, além do som. Estúdio informa no hover (frequência, nota, dB). Arte segue o cursor: o líquido do PSY entorta, o Ferro é atraído, os fios da Fita perseguem, o Túnel desloca o centro, o Caleidoscópio gira. A regra: encostar o mouse nunca quebra o visual, só puxa ele.
 
+## Detalhe e tempo real (v2.5)
+
+**Detalhe Alto é o padrão.** O espectro mantém a janela de 4096 amostras (a leitura em dB não muda) e roda a FFT em até 4× o tamanho com zero-padding: o gráfico ganha pontos de frequência e o pico desliza em vez de pular de raia em raia. O eixo continua o medido no MiniMeters (100 Hz a 29,7%, 1 kHz a 58,6%, 10 kHz a 88,7%). Custo medido: ~0,84 ms por quadro pra Mid+Side em 4× (número da bancada; vale o HUD no Mac). Se o quadro ficar caro, Padrão está a um `D` de distância.
+
+**Captura Automática.** O usuário não deve escolher o caminho técnico: o app testa nativa e "Do sistema" por 3 s cada e fica no melhor (estéreo, menor atraso). Reconectar refaz.
+
+**Reação rápida.** Só a trilha do pulso e da arte lê até o bloco mais novo; os medidores continuam na cabeça de leitura, calibrados.
+
+**Atalhos de mão no volante:** 1–9 presets, R grava o visual sob o mouse, D detalhe, C diagnóstico. Janela oculta não desenha.
+
 ## Tempo real e fluidez (v2.4)
 
 O som do computador chega em blocos. Se cada quadro lê sempre a amostra mais nova, a 120 quadros por segundo a maioria dos quadros não tem som novo: o estéreo e o osciloscópio param, a onda repete pedaço e o espectro anda aos trancos. O MiniMeters também anda em degraus, só que com blocos bem menores.

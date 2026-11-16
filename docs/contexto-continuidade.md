@@ -1,3 +1,15 @@
+<v25_detalhe_latencia_novembro_2026>
+LEIA ESTE PRIMEIRO, depois v2.4. Rodada de 16/nov. Plano completo: docs/plano-v25-fluidez-detalhe-latencia.md. Log por etapa: docs/progresso-v25.md.
+PEDIDO DO BRUNO: análise completa e plano em fases pra mais fluidez/detalhe (espectro com mais frequências), menos atraso som→visual, UX. Depois: "siga com todas as fases, detalhe alto como padrão, subir o electron, módulo de captura por enquanto não precisa, apague instaladores antigos e backups, deixe só a versão mais atual". E: sempre dar o comando de git no fim e manter o README atualizado (Claude não commita).
+FEITO (F0–F5, 184 checagens):
+- F0: HUD com tempo por painel (p.ms), telaHz, diagnóstico copiável (C com HUD aberto, botão #auddiag), APP_VERSAO 2.5.0, test/bench5.js.
+- F1: Detalhe Alto/Padrão (CV.detalhe, CV.detalhePad: ≤4096 ×4, ≤8192 ×2, senão ×1). FFT(N, W): janela W, FFT N com zero-padding, sc = winGain*2/W. spectrum/spectrumPw/specCalc têm pad. Espectro em potência (mag²), eixo pelo dRaia = sr/n (NÃO mudar: eixo medido no MiniMeters). Osciloscópio até 1400 pontos, onda lê do anel, espectrograma 1 FFT/coluna via ImageData (CV.cmapLut), dprCap Estúdio 2.
+- F2: engine.rapido + rdB (beat/reação até wr só em fonte async). state.captura 'auto' (padrão, migração única v25), capAuto guarda decisão, autoCaptura em startComputerAudio (nativa → mede 3 s → "Do sistema" 3 s → fica na melhor), medeCaptura/decideCaptura. Aba Áudio: Automática, Reação rápida, linha "Som → olho" (#audlat). package.json: 2.5.0, electron ^45.3.3, electron-builder ^26.18.0.
+- F3/F4: Camadas por tempo (acumulador, retratos reciclados). Teclas 1–9 (presets), R (gravar visual sob o mouse), D. #emptyretry (Reconectar). document.hidden não desenha.
+- F5: apagados dist/ antigos (fica só 2.4.0 até o Bruno gerar 2.5.0), backup-antes-otimizacao, backup-v1, backup-v2.0, test/.fuse_hidden*. Histórico agora só no git.
+PENDENTE NO MAC (nada disso foi medido): 1) npm install (Electron 45 nunca rodou aqui; native-recorder é N-API, deve funcionar; se quebrar, voltar ^33/^24 no package.json). 2) npm start e ler o HUD (F): ms do espectro em Alto, fps, bloco, recuo, "Som → olho". 3) Ver qual captura a Automática escolheu (D/C copia o diagnóstico). 4) PRESENT_FRAMES = 2 segue chute. NÃO FAZER: módulo nativo Core Audio próprio (Bruno disse que não precisa por ora); disable-frame-rate-limit proibido; nunca rodar npm install na VM (pasta compartilhada com o Mac).
+</v25_detalhe_latencia_novembro_2026>
+
 <v24_tempo_real_novembro_2026>
 LEIA ESTE PRIMEIRO, depois o da v2.3. Rodada de 7/nov.
 PEDIDO DO BRUNO: "revise tudo pra deixar ainda mais fiel, especialmente o espectro (o do MiniMeters parece mais fluido, talvez com mais frames por segundo?) e o estéreo (o do MiniMeters é mais satisfatório)". Mesmo princípio de quadros e suavidade pra todos os visuais. E a resposta em tempo real pesa tanto quanto: menor atraso possível entre o som e a tela.

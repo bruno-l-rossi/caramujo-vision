@@ -109,6 +109,17 @@
     var f = x - i, a = pts[i], b = pts[i + 1];
     return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
   };
+  /* v2.5: o mesmo mapa em tabela de 128 passos (RGB), pra pintar coluna por ImageData */
+  var _lut = {};
+  CV.cmapLut = function (m) {
+    var name = CV.cmapName(m), inv = !(m && m.s && m.s.cmap && m.s.cmap !== 'auto') && CV.isLight(m), key = name + (inv ? 'i' : '');
+    var t = _lut[key];
+    if (!t) {
+      t = _lut[key] = { rgb: new Uint8Array(128 * 3), inv: inv };
+      for (var q = 0; q < 128; q++) { var c = CV.cmapRgb(name, q / 127); t.rgb[q * 3] = c[0]; t.rgb[q * 3 + 1] = c[1]; t.rgb[q * 3 + 2] = c[2]; }
+    }
+    return t;
+  };
   CV.cmap = function (m, v, alpha) {
     var name = CV.cmapName(m);
     /* FUNDO CLARO INVERTE O MAPA. Os mapas vão do escuro pro claro, então no papel o
@@ -651,6 +662,13 @@
      volume da música (audio.js, updateReacao): grave, soco, energia, medio, agudo e o
      ondaRef pro autoganho da forma de onda.
      Quanto o som mexe em cada visual = Reação geral (Ajustes) x Reação do visual. */
+  /* v2.5 DETALHE. 'alto' (padrão) = mais pontos por curva: espectro com zero-padding,
+     osciloscópio com 1 ponto por pixel. 'padrao' = a v2.4 de antes. O app escreve aqui. */
+  CV.detalhe = 'alto';
+  CV.detalhePad = function (n) {
+    if (CV.detalhe !== 'alto') return 1;
+    return n <= 4096 ? 4 : n <= 8192 ? 2 : 1;
+  };
   CV.reacao = 1;          // o app escreve aqui: Leve 0,45 · Média 0,7 · Forte 1 · Máxima 1,45
   CV.REACOES = [['leve', 'Leve', 0.45], ['media', 'Média', 0.7], ['forte', 'Forte', 1], ['maxima', 'Máxima', 1.45]];
   CV.rx = function (m) {
@@ -953,22 +971,30 @@
       c.clearRect(0, 0, w, h);
       if (!d || !d.spectrum || w < 4 || h < 4) return;
       var n = s.fft || 4096, canal = s.canal === 'lr' || s.canal === 'mid' ? s.canal : 'ms';
-      var dbM = d.spectrum(n), nb = dbM.length, binHz = d.specBinHz;
-      var dbA = canal === 'ms' ? d.spectrum(n, 's') : canal === 'lr' ? d.spectrum(n, 'r') : null;   // curva azul, por baixo
-      var dbV = canal === 'lr' ? d.spectrum(n, 'l') : dbM;                                            // curva vermelha, por cima
-      var dpr = m.dpr || 1, nyq = binHz * nb, W = Math.max(1, Math.round(w * dpr));
+      var pad = CV.detalhePad(n);   // v2.5: zero-padding, mais pontos entre as raias de antes
+      var dbM = d.spectrum(n, undefined, pad), nb = dbM.length, binHz = d.specBinHz;
+      var dbA = canal === 'ms' ? d.spectrum(n, 's', pad) : canal === 'lr' ? d.spectrum(n, 'r', pad) : null;   // curva azul, por baixo
+      var dbV = canal === 'lr' ? d.spectrum(n, 'l', pad) : dbM;                                                // curva vermelha, por cima
+      // potência pronta (mag²): a média não precisa mais de Math.pow(10, dB/10) por raia
+      var srcM = d.spectrumPw(n, undefined, pad);
+      var srcA = canal === 'ms' ? d.spectrumPw(n, 's', pad) : canal === 'lr' ? d.spectrumPw(n, 'r', pad) : null;
+      var srcV = canal === 'lr' ? d.spectrumPw(n, 'l', pad) : srcM;
+      /* Δ DO EIXO = a raia da JANELA (sr / n), não a do zero-padding: o eixo medido no vídeo
+         (100 Hz a 29,7%, 1 kHz a 58,6%, 10 kHz a 88,7%) vem da FFT de 4096 dele. Com pad o
+         binHz encolhe, mas o eixo tem que ficar exatamente onde estava. */
+      var dpr = m.dpr || 1, nyq = binHz * nb, dRaia = (d.sr || binHz * nb * 2) / n, W = Math.max(1, Math.round(w * dpr));
 
       /* EIXO E COLUNAS, refeitos só quando muda o tamanho, a FFT, a escala ou o tilt.
          xb = x de cada raia (px de tela); tb = tilt de cada raia. Cada coluna de pixel
          de dispositivo guarda as raias que caem nela (agudo) ou as duas vizinhas pra
          interpolar (grave), que é como a barra acompanha o polígono da linha. */
-      var ax = st.ax, sig = nb + '|' + binHz.toFixed(4) + '|' + s.escala + '|' + s.tilt + '|' + W + '|' + w;
+      var ax = st.ax, sig = nb + '|' + binHz.toFixed(4) + '|' + dRaia.toFixed(3) + '|' + s.escala + '|' + s.tilt + '|' + W + '|' + w;
       if (!ax || ax.sig !== sig) {
         ax = st.ax = { sig: sig, xb: new Float32Array(nb), tb: new Float32Array(nb), col: new Int32Array(nb),
           k0: new Int32Array(W), k1: new Int32Array(W), ia: new Int32Array(W), fr: new Float32Array(W) };
         for (k = 0; k < nb; k++) {
           var fk = k * binHz;
-          ax.xb[k] = espU(fk, nyq, binHz, s.escala) * w;
+          ax.xb[k] = espU(fk, nyq, dRaia, s.escala) * w;
           // a raia 0 (DC) fica no chão, como a dele: a curva nasce no canto de baixo
           ax.tb[k] = k === 0 ? -1000 : s.tilt * Math.log2(fk / 1000);
           ax.col[k] = Math.min(W - 1, Math.floor(ax.xb[k] * dpr));
@@ -994,7 +1020,7 @@
         if (s.escala === 'lin') for (var fq = 1000; fq < nyq; fq += 1000) { lista.push(fq); }
         for (i = 0; i < lista.length; i++) {
           if (lista[i] >= nyq) continue;
-          var gx = espU(lista[i], nyq, binHz, s.escala) * w;
+          var gx = espU(lista[i], nyq, dRaia, s.escala) * w;
           linhas.push(dpr === 1 ? Math.floor(gx) + 0.5 : Math.round(gx * dpr) / dpr);
           var fv = lista[i];
           var rotula = s.escala === 'lin' ? fv % 5000 === 0 : (fv === 100 || fv === 1000 || fv === 10000);
@@ -1010,16 +1036,16 @@
          não pelo tempo do quadro. Com a cabeça andando liso, o espectro anda liso a 60
          ou a 120 quadros; sem som novo (modo imediato entre dois blocos), fica parado. */
       var sm = Math.max(0, Math.min(0.995, +s.smooth || 0));
-      var sr = binHz * n, anda = d.adv !== undefined ? Math.min(d.adv, sr * 0.25) : Math.min(0.25, dt) * sr;
+      var sr = d.sr || binHz * nb * 2, anda = d.adv !== undefined ? Math.min(d.adv, sr * 0.25) : Math.min(0.25, dt) * sr;
       var aK = sm > 0 ? Math.pow(sm, anda / 256) : 0, bK = 1 - aK;
       var dbS = st.dbS && st.dbS.length === nb ? st.dbS : (st.dbS = new Float32Array(nb));
       function media(src, nomePw) {
         var pw = st[nomePw];
         if (!pw || pw.length !== nb) { pw = st[nomePw] = new Float32Array(nb); }
-        for (var q = 0; q < nb; q++) pw[q] = pw[q] * aK + Math.pow(10, src[q] * 0.1) * bK;
+        for (var q = 0; q < nb; q++) pw[q] = pw[q] * aK + src[q] * bK;
         return pw;
       }
-      var pwM = media(dbM, 'pw');
+      var pwM = media(srcM, 'pw');
       for (k = 0; k < nb; k++) dbS[k] = pwM[k] > 1e-20 ? 10 * Math.log10(pwM[k]) : -200;
 
       var lw = CV.lw(m, 1.7), yChao = h + lw + 1;
@@ -1146,13 +1172,13 @@
       if (s.estilo !== 'barras') {
         // azul (side, ou R) por baixo; vermelho (mid, ou L) por cima
         if (dbA) {
-          var pwA = media(dbA, 'pwA'), da = st.da && st.da.length === nb ? st.da : (st.da = new Float32Array(nb));
+          var pwA = media(srcA, 'pwA'), da = st.da && st.da.length === nb ? st.da : (st.da = new Float32Array(nb));
           for (k = 0; k < nb; k++) da[k] = pwA[k] > 1e-20 ? 10 * Math.log10(pwA[k]) : -200;
           c.strokeStyle = CV.rgba(corMedidor(m, 1, 0.55), 1); traca(da);
         }
         var dv = dbS;
         if (dbV !== dbM) {
-          var pwV = media(dbV, 'pwV');
+          var pwV = media(srcV, 'pwV');
           dv = st.dv && st.dv.length === nb ? st.dv : (st.dv = new Float32Array(nb));
           for (k = 0; k < nb; k++) dv[k] = pwV[k] > 1e-20 ? 10 * Math.log10(pwV[k]) : -200;
         }
@@ -1179,7 +1205,7 @@
       var ya = dbS[kp - 1], yb2 = dbS[kp], yc = dbS[Math.min(nb - 1, kp + 1)], den = ya - 2 * yb2 + yc;
       var dl2 = Math.abs(den) > 1e-9 ? Math.max(-0.5, Math.min(0.5, 0.5 * (ya - yc) / den)) : 0;
       fr2 = (kp + dl2) * binHz; lv = yb2 - 0.25 * (ya - yc) * dl2;
-      xP = espU(fr2, nyq, binHz, s.escala) * w;
+      xP = espU(fr2, nyq, dRaia, s.escala) * w;
       yP = Math.max(0, Math.min(h, yDe(lv - tb[kp] + s.tilt * Math.log2(Math.max(binHz * 0.5, fr2) / 1000), kp)));
       var txt = CV.leituraMM(lv, fr2);
       c.font = CV.font(m, 11, '700');
@@ -1241,9 +1267,12 @@
         bc.globalCompositeOperation = 'source-over';
         var x = CV.scrollRing.next(m, 'buf', buf, bc, dx);
         var H = buf.height, laneH = H / lanes;
-        var L = d.timeL, R = d.timeR, n = L.length;
+        /* v2.5: lê direto do ANEL, terminando na cabeça de leitura. Com timeL (1024 amostras)
+           o limite de 30 quadros (1.600 amostras por quadro) perdia 36% do som da faixa. */
+        var ring = !!(d.ringL && d.pos !== undefined);
+        var L = ring ? d.ringL : d.timeL, R = ring ? d.ringR : d.timeR, n = ring ? d.pos : L.length, mk = ring ? L.length - 1 : 0x3fffffff;
         // exatamente o som que a cabeça andou desde a última coluna escrita
-        var fresh = Math.min(n, Math.max(1, st._advA)); st._advA = 0;
+        var fresh = Math.min(ring ? 16384 : n, Math.max(1, st._advA)); st._advA = 0;
         var modo = s.cor === 'auto' ? (CV.themeOf(m) === 'minimeters' ? 'banda' : 'tema') : s.cor;
         var aLo = Math.exp(-2 * Math.PI * (modo === 'banda' ? ONDA_MM.fL : 220) / sr), aHi = Math.exp(-2 * Math.PI * (modo === 'banda' ? ONDA_MM.fH : 2400) / sr);
         var cLo, cMid, cHi, cUma;
@@ -1262,7 +1291,7 @@
             if (a1 <= a0) a1 = a0 + 1;
             var pk = 0, pLo = 0, pMid = 0, pHi = 0, flo = fs.lo, fhi = fs.hi;
             for (var i = a0; i < a1; i++) {
-              var a = L[i], b = R[i];
+              var a = L[i & mk], b = R[i & mk];
               var smp = ch === 'l' ? a : ch === 'r' ? b : ch === 'm' ? (a + b) * 0.5 : (a - b) * 0.5;
               flo = smp + (flo - smp) * aLo;
               fhi = smp + (fhi - smp) * aHi;
@@ -1694,7 +1723,8 @@
           if (mx > pkV) pkV = mx; if (-mn > pkV) pkV = -mn;
         }
       } else {
-        pts = Math.max(32, Math.min(700, Math.round(w / 2), span));
+        // v2.5 Detalhe Alto: 1 ponto por pixel de tela (até 1.400), curva lisa por cima
+        pts = CV.detalhe === 'alto' ? Math.max(32, Math.min(1400, Math.round(w), span)) : Math.max(32, Math.min(700, Math.round(w / 2), span));
         if (!st.X || st.X.length !== pts) { st.X = new Float32Array(pts); st.Y = new Float32Array(pts); }
         X = st.X; Y = st.Y;
         for (i = 0; i < pts; i++) {
@@ -1776,7 +1806,60 @@
         c.fillText(txt, 10, m.mouse.y - 8);
       }
     },
+    /* v2.5: UMA FFT POR COLUNA, em posições entre a cabeça anterior e a de agora, e a coluna
+       sai de um ImageData só (a v2.4 repetia a mesma FFT em 1 a 3 colunas por quadro e
+       pintava até 720 retângulos por coluna). Cada pixel da faixa é um pedaço de som
+       diferente. No máximo 4 FFTs por quadro; passou disso, as colunas dividem. */
+    colunaPx: function (m, d, s, buf, bc, dx, FMIN, FMAX) {
+      var st = m.st, H = buf.height, rows = Math.min(720, Math.max(24, Math.round(H)));
+      var x = CV.scrollRing.next(m, 'buf', buf, bc, dx);
+      var adv = Math.max(1, d.adv || 0), P = d.pos, nF = Math.min(dx, 4), lut = CV.cmapLut(m), rgb = lut.rgb;
+      var img = st.sgImg;
+      if (!img || img.width !== dx || img.height !== H) img = st.sgImg = bc.createImageData(dx, H);
+      var px = img.data; px.fill(0);
+      var col = st.sgCol && st.sgCol.length === H * 4 ? st.sgCol : (st.sgCol = new Uint8ClampedArray(H * 4));
+      var tab = null, tilt = null, y0s = st.sgY0;
+      for (var fi = 0; fi < nF; fi++) {
+        var fim = Math.floor(P - adv + (fi + 1) * adv / nF);
+        var sl = d.specCalc(4096, undefined, 1, fim), sdb = sl.db, nb2 = sdb.length, bHz = d.specBinHz;
+        if (!tab || tab.nb !== nb2) {
+          tab = CV.binTableFull(m, 'sg', rows, nb2, bHz, FMIN, FMAX, true);
+          if (!tab.tilt || tab.tilt.length !== rows) {
+            tab.tilt = new Float32Array(rows);
+            for (var rr = 0; rr < rows; rr++) tab.tilt[rr] = 3 * Math.log(tab.hz[rr] / 1000) / Math.LN2 + 92;
+          }
+          tab.nb = nb2; tilt = tab.tilt;
+        }
+        var bins = tab.bins, hzs = tab.hz;
+        col.fill(0);
+        for (var r = 0; r < rows; r++) {
+          var b0 = bins[r], b1 = r < rows - 1 ? bins[r + 1] : b0;
+          var bLo = b1 < b0 ? b1 : b0, bHi = b1 < b0 ? b0 : b1, raw, qb;
+          raw = sdb[b0];
+          if (bHi > bLo + 1) { for (qb = bLo; qb <= bHi; qb++) if (sdb[qb] > raw) raw = sdb[qb]; }
+          else {
+            var pf = hzs[r] / bHz, i0 = pf | 0; if (i0 < 1) i0 = 1; if (i0 > nb2 - 3) i0 = nb2 - 3;
+            var fr = pf - i0, ya = sdb[i0 - 1], yb = sdb[i0], yc = sdb[i0 + 1], yd = sdb[i0 + 2];
+            raw = yb + 0.5 * fr * (yc - ya + fr * (2 * ya - 5 * yb + 4 * yc - yd + fr * (3 * (yb - yc) + yd - ya)));
+          }
+          var lv = (raw + tilt[r]) / 70;
+          if (lv <= 0) continue;
+          var v = Math.pow(lv > 1 ? 1 : lv, s.contraste) * s.sens; if (v > 1) v = 1;
+          if (v < 0.04) continue;
+          var vq = lut.inv ? 1 - v * 0.92 : v, q = (vq * 127) | 0; if (q < 0) q = 0; else if (q > 127) q = 127;
+          var al = Math.min(1, 0.2 + v) * 255, yA = Math.round(r / rows * H), yB = Math.round((r + 1) / rows * H);
+          if (yB <= yA) yB = yA + 1; if (yB > H) yB = H;
+          for (var yy = yA; yy < yB; yy++) { var o = yy * 4; col[o] = rgb[q * 3]; col[o + 1] = rgb[q * 3 + 1]; col[o + 2] = rgb[q * 3 + 2]; col[o + 3] = al; }
+        }
+        for (var j = 0; j < dx; j++) {
+          if (Math.floor(j * nF / dx) !== fi) continue;
+          for (var y = 0; y < H; y++) { var s4 = y * 4, d4 = (y * dx + j) * 4; px[d4] = col[s4]; px[d4 + 1] = col[s4 + 1]; px[d4 + 2] = col[s4 + 2]; px[d4 + 3] = col[s4 + 3]; }
+        }
+      }
+      bc.putImageData(img, x, 0);
+    },
     coluna: function (m, d, s, buf, bc, dx, FMIN, FMAX) {
+      if (d.specCalc && d.ringL && d.pos !== undefined && bc.createImageData) return CV.registry.spectrogram.colunaPx(m, d, s, buf, bc, dx, FMIN, FMAX);
       CV.blend(m, bc, false);
       var H = buf.height, n = d.freq.length;
       var x = CV.scrollRing.next(m, 'buf', buf, bc, dx);
@@ -2257,13 +2340,21 @@
       /* v2.2: cada retrato já nasce com autoganho e com o tamanho do grave daquele
          instante. A pilha vira um registro do ritmo: a camada do kick sobe alta, a do
          vale fica baixa. Antes era amostra crua x 16% da altura. */
-      if (++m.st.skip % Math.max(1, Math.round(3 / s.speed)) === 0) {
-        var td = d.time, P = CV.det(m, 96, 288), snap = new Float32Array(P);
+      /* v2.5: o retrato sai por TEMPO (50 ms / velocidade), não por contagem de quadros:
+         a pilha anda igual a 30, 60 ou 120 Hz. E o retrato que sai da pilha é reciclado. */
+      m.st.acc = (m.st.acc || 0) + dt;
+      var cada = 0.05 / Math.max(0.3, s.speed);
+      if (m.st.acc >= cada) {
+        m.st.acc = m.st.acc > cada * 3 ? 0 : m.st.acc - cada;
+        var td = d.time, P = CV.det(m, 96, 288), snap;
+        var velho = m.st.hist.length >= K ? m.st.hist[0] : null;
+        snap = velho && velho.length === P ? velho : new Float32Array(P);
         var stp = Math.floor(td.length / P);
         var gk = CV.ganhoOnda(d, 0.95, 8) * CV.respira(m, 0.6 * gS + 0.6 * sm.soco, 0.5);
         for (var i = 0; i < P; i++) snap[i] = td[i * stp] * gk;
+        if (snap === velho) m.st.hist.shift();
         m.st.hist.push(snap);
-        if (m.st.hist.length > K) m.st.hist.shift();
+        while (m.st.hist.length > K) m.st.hist.shift();
       }
       var hist = m.st.hist, L = hist.length;
       if (!L) return;

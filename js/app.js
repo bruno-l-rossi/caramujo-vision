@@ -139,7 +139,7 @@
       v: 2, theme: 'minimeters', pos: desk ? 'bottom' : 'free', pinned: false, fps: 0,
       fx: { preset: 'off', amount: 0.8 }, recSize: 'tela', barH: BAR_DEF, colW: COL_DEF, reacao: 'forte',
       toolbar: 'auto', preset: 'barra', dirty: false, rows: rowsFromPreset(PRESET.barra), firstRun: true,
-      fluidez: 'suave', captura: 'nativa'
+      fluidez: 'suave', captura: 'auto', detalhe: 'alto', rapido: true, v25: 1
     };
   }
 
@@ -206,7 +206,11 @@
     if (!REC_PX[st.recSize] && st.recSize !== 'tela') st.recSize = 'tela';
     if (!CV.REACOES.some(function (r) { return r[0] === st.reacao; })) st.reacao = 'forte';
     if (st.fluidez !== 'imediata') st.fluidez = 'suave';
-    if (st.captura !== 'sistema') st.captura = 'nativa';
+    if (st.detalhe !== 'padrao') st.detalhe = 'alto';   // v2.5: Alto é o padrão, quem já tinha estado migra sozinho
+    if (!st.v25) { st.captura = 'auto'; st.capAuto = undefined; st.v25 = 1; }   // v2.5: quem já tinha estado entra na captura Automática
+    if (st.captura !== 'sistema' && st.captura !== 'nativa') st.captura = 'auto';
+    if (st.capAuto !== 'sistema' && st.capAuto !== 'nativa') st.capAuto = undefined;
+    st.rapido = st.rapido !== false;
     st.barH = Math.max(60, Math.min(600, +st.barH || BAR_DEF));
     st.colW = Math.max(140, Math.min(900, +st.colW || COL_DEF));
     st.rows = (Array.isArray(st.rows) ? st.rows : []).map(function (r) {
@@ -230,14 +234,16 @@
   var state = loadState();
   CV.theme = state.theme;
   engine.fluidez = state.fluidez;
+  engine.rapido = state.rapido !== false;
   /* REAÇÃO AO SOM (v2.2): quanto a música mexe nos visuais, pra tela inteira. Nasce em
      Forte, que é o comportamento pedido: o grave comanda e o visual enche o painel.
      Cada visual ainda tem o ajuste fino dele (Reação, ou Tamanho nos medidores). */
+  function aplicaDetalhe() { CV.detalhe = state.detalhe === 'padrao' ? 'padrao' : 'alto'; }
   function aplicaReacao() {
     var r = CV.REACOES.filter(function (x) { return x[0] === state.reacao; })[0];
     CV.reacao = r ? r[2] : 1;
   }
-  aplicaReacao();
+  aplicaReacao(); aplicaDetalhe();
   CV.cmap0 = 'auto';
   CV.bgAdj = { l: 0, s: 0, h: 0, c: 0 };
 
@@ -386,7 +392,7 @@
      shader 1,5x. A qualidade adaptativa só mexe na arte: o medidor nunca cede. */
   function dprCap(def) {
     if (def.webgl) return 1.5;
-    if (def.group === 'Estúdio') return (def.buffered ? 1.5 : 2);
+    if (def.group === 'Estúdio') return 2;   // v2.5: onda e espectrograma também em 2x (Retina nítido, sem esticar 1,33x)
     return 2;
   }
   function resizePanel(p, force) {
@@ -1118,8 +1124,9 @@
     setFocusUid = foco ? foco.uid : null;
     var conta = {};
     var reacF = { k: 'reacao', label: 'Reação ao som', type: 'seg', opts: CV.REACOES.map(function (r) { return [r[0], r[1]]; }) };
-    var h = '<div class="form reac">' + ctrlHtml(reacF, state.reacao, 'reacao') + '</div>' +
-      '<p class="note reacnote">Quanto a música, principalmente o grave, mexe em todos os visuais. Em <b>Forte</b> eles crescem até quase o painel inteiro no kick. Espectro, Loudness, VU e Espectrograma continuam batendo com o MiniMeters.</p>';
+    var detF = { k: 'detalhe', label: 'Detalhe', type: 'seg', opts: [['alto', 'Alto'], ['padrao', 'Padrão']] };
+    var h = '<div class="form reac">' + ctrlHtml(reacF, state.reacao, 'reacao') + ctrlHtml(detF, state.detalhe, 'detalhe') + '</div>' +
+      '<p class="note reacnote">Quanto a música, principalmente o grave, mexe em todos os visuais. Em <b>Forte</b> eles crescem até quase o painel inteiro no kick. <b>Detalhe Alto</b> põe mais pontos nas curvas (espectro, osciloscópio): o pico desliza em vez de pular. Padrão é o desenho da v2.4.</p>';
     h += '<div class="chips">';
     cells.forEach(function (c) {
       var nm = CV.registry[c.mod].name;
@@ -1153,8 +1160,10 @@
     }
     setBody.innerHTML = h;
     var reacEl = setBody.querySelector('.form.reac');
-    if (reacEl) wireCtrls(reacEl, { reacao: reacF }, function (k, v) {
-      state.reacao = v; aplicaReacao(); save();
+    if (reacEl) wireCtrls(reacEl, { reacao: reacF, detalhe: detF }, function (k, v) {
+      if (k === 'detalhe') { state.detalhe = v; aplicaDetalhe(); }
+      else { state.reacao = v; aplicaReacao(); }
+      save();
     });
     setBody.querySelectorAll('.chip[data-uid]').forEach(function (b) {
       b.addEventListener('click', function () { setFocusUid = b.getAttribute('data-uid'); renderSettings(); });
@@ -1285,16 +1294,21 @@
       '</div>';
     if (as.det) h += '<p class="note" style="margin-top:8px">' + esc(as.det) + '</p>';
     h += '<div class="acts"><button class="btn" id="audretry">Reconectar</button>' +
-      '<button class="btn" id="auddemo">Testar com o beat demo</button></div></div>';
+      '<button class="btn" id="auddemo">Testar com o beat demo</button>' +
+      '<button class="btn" id="auddiag">Copiar diagnóstico</button></div></div>';
     var camposS = {
       flu: { k: 'flu', label: 'Fluidez', type: 'seg', opts: [['suave', 'Suave'], ['imediata', 'Imediata']] },
-      cap: { k: 'cap', label: 'Captura', type: 'seg', opts: [['nativa', 'Nativa'], ['sistema', 'Do sistema']] }
+      cap: { k: 'cap', label: 'Captura', type: 'seg', opts: [['auto', 'Automática'], ['nativa', 'Nativa'], ['sistema', 'Do sistema']] },
+      rap: { k: 'rap', label: 'Reação rápida', type: 'toggle' }
     };
     h += '<div class="sec"><h4>Tempo real</h4><div class="form">' + ctrlHtml(camposS.flu, state.fluidez, 'flu');
     if (desk) h += ctrlHtml(camposS.cap, state.captura, 'cap');
+    h += ctrlHtml(camposS.rap, state.rapido !== false, 'rap');
+    h += '<div class="fr"><label>Som → olho</label><span class="stat ok" id="audlat">' + latTxt() + '</span></div>';
     h += '</div><p class="note" style="margin-top:10px">O som do computador chega em blocos. <b>Suave</b> dá som novo a todo quadro, ' +
       'e o atraso extra é o tamanho de um bloco. <b>Imediata</b> mostra o bloco assim que ele chega, com o menor atraso, mas entre um bloco e outro o desenho para. ' +
       'A tecla F mostra o bloco, o recuo e o atraso total.</p>' +
+      '<p class="note"><b>Automática</b> começa na nativa e, depois de 3 segundos de som, testa a captura do sistema: fica na que chegar em estéreo com o menor atraso. <b>Reação rápida</b> faz o pulso e o grave da arte lerem o som assim que ele chega, sem esperar a onda (menos atraso no kick).</p>' +
       (desk ? '<p class="note"><b>Do sistema</b> usa a captura do próprio motor do app (Core Audio no macOS 15 ou mais novo). Vale testar: em algumas máquinas ela chega em bloco menor.</p>' : '') +
       '</div>';
     h += '<div class="sec"><h4>Dicas</h4>' +
@@ -1317,11 +1331,13 @@
       if (pick.value === 'auto') startComputerAudio();
       else startDevice(pick.value, pick.options[pick.selectedIndex].textContent);
     });
-    $('audretry').addEventListener('click', function () { state.audioIn = 'auto'; save(); startComputerAudio(); });
+    $('audretry').addEventListener('click', function () { state.audioIn = 'auto'; state.capAuto = undefined; save(); startComputerAudio(); });
     wireCtrls(setBody, camposS, function (k, v) {
       if (k === 'flu') { state.fluidez = v; engine.fluidez = v; save(); }
-      if (k === 'cap') { state.captura = v; state.audioIn = 'auto'; save(); startComputerAudio(); }
+      if (k === 'cap') { state.captura = v; state.capAuto = undefined; state.audioIn = 'auto'; save(); startComputerAudio(); }
+      if (k === 'rap') { state.rapido = !!v; engine.rapido = !!v; save(); }
     });
+    $('auddiag').addEventListener('click', copiaDiag);
     $('auddemo').addEventListener('click', function () {
       engine.startDemo().then(function (r) {
         setAudioStat(r === 'synth' ? 'Demo sintético' : 'Beat demo', 'ok');
@@ -1341,7 +1357,7 @@
   function tabAtalhos() {
     var keys = [
       ['S', 'Abre e fecha os ajustes'], ['P', 'Pausa e continua'], ['T', 'Troca de tema'],
-      ['H', 'Barra de ferramentas sempre visível'], ['F', 'Mostra fps e o atraso do som até a tela'],
+      ['H', 'Barra de ferramentas sempre visível'], ['D', 'Detalhe alto ou padrão'], ['1 a 9', 'Troca pro preset da lista, na ordem do menu'], ['R', 'Grava o vídeo do visual sob o mouse (de novo pra parar)'], ['F', 'Mostra fps e o atraso do som até a tela (C copia o diagnóstico)'],
       ['Esc', 'Fecha o que estiver aberto'], ['Botão direito', 'Menu do visual: ajustes, gravar, trocar, remover'],
       ['Duplo clique', 'Na divisória: iguala os tamanhos'], ['⌘Q', 'Fecha o programa']
     ];
@@ -1350,7 +1366,7 @@
     h += '</div></div><div class="sec"><h4>Como usar</h4>' +
       '<p class="note">Arraste a divisória entre dois visuais pra mudar o tamanho. Arraste pela alça <b>⋮⋮</b> pra trocar de lugar: solte do lado pra encaixar na linha, em cima ou embaixo pra abrir uma linha nova.</p>' +
       '<p class="note">O preset guarda quais visuais estão na tela e o tamanho de cada um. Tema e posição são separados.</p></div>' +
-      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision 2.4</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
+      '<div class="sec"><h4>Sobre</h4><p class="note"><b>Caramujo Vision ' + APP_VERSAO + '</b> · rideblan / Caramujo Records · @rideblan33</p></div>';
     setBody.innerHTML = h;
   }
   function setToolbarMode(m) {
@@ -1431,20 +1447,20 @@
         setAudioStat('Sem permissão de áudio', 'bad', desk ? 'Autorize a gravação de tela e o microfone em Ajustes do Sistema › Privacidade.' : 'O navegador bloqueou o microfone. Use “Testar com o beat demo” ou solte um arquivo de áudio na janela.');
       });
     };
-    var goLoopback = function (diag) {
-      engine.startSystemLoopback().then(function () {
+    var goLoopback = function (diag, depois) {
+      return engine.startSystemLoopback().then(function () {
         setAudioStat('Áudio do computador', 'ok', diag || '');
+        if (depois) depois();
       }).catch(function () { goBlackhole('O loopback do sistema não respondeu'); });
     };
-    setAudioStat('Conectando…', 'warn');
-    // v2.4: dá pra pedir a captura do próprio Chromium (Core Audio no macOS 15+) e comparar no HUD
-    if (desk && state.captura === 'sistema' && desk.enableLoopback) { goLoopback(''); return; }
-    if (desk && desk.nativeStart) {
-      engine.startNativeCapture().then(function () {
+    var goNativo = function (depois, semFallback) {
+      return engine.startNativeCapture().then(function () {
         setAudioStat('Estéreo nativo', 'ok');
+        if (depois) depois();
       }).catch(function (err) {
         var msg = String((err && err.message) || err);
         console.warn('[caramujo] captura nativa falhou:', msg);
+        if (semFallback) return;
         if (desk.nativeWhy) {
           Promise.resolve(desk.nativeWhy()).then(function (d) {
             console.warn('[caramujo] diagnóstico nativo:', JSON.stringify(d));
@@ -1453,8 +1469,48 @@
           }).catch(function () { goLoopback(); });
         } else goLoopback();
       });
-    } else if (desk && desk.enableLoopback) goLoopback();
+    };
+    setAudioStat('Conectando…', 'warn');
+    clearTimeout(autoT);
+    // Do sistema: pedido explícito
+    if (desk && state.captura === 'sistema' && desk.enableLoopback) { goLoopback(''); return; }
+    if (desk && state.captura === 'nativa' && desk.nativeStart) { goNativo(); return; }
+    /* v2.5 AUTOMÁTICA: a escolha técnica sai das costas do Bruno. Já decidiu antes? usa a
+       decisão. Senão toca nativa, espera 3 s de som de verdade e mede: estéreo e atraso
+       baixos = fica. Se não, testa "Do sistema" 3 s: se chegar em estéreo, fica nela (recuo
+       zero); se não, volta pra nativa. A decisão fica salva até apertar Reconectar. */
+    if (desk && state.captura === 'auto' && desk.nativeStart) {
+      if (state.capAuto === 'sistema' && desk.enableLoopback) { goLoopback('Automático: o caminho do sistema chegou em estéreo e sem recuo.'); return; }
+      if (state.capAuto === 'nativa') { goNativo(); return; }
+      goNativo(function () { medeCaptura('nativa', function (nat) {
+        if (nat.estereo && nat.atraso <= 14) return decideCaptura('nativa');
+        if (!desk.enableLoopback) return decideCaptura('nativa');
+        goLoopback('', function () { medeCaptura('sistema', function (sis) {
+          if (sis.estereo) return decideCaptura('sistema');
+          goNativo(function () { decideCaptura('nativa'); }, true);
+        }); });
+      }); });
+      return;
+    }
+    if (desk && desk.enableLoopback) goLoopback();
     else goBlackhole();
+  }
+  /* 3 s acumulados de som de verdade (nível > 0,02), no máximo 90 s esperando */
+  var autoT = 0;
+  function medeCaptura(nome, cb) {
+    var som = 0, espera = 0;
+    (function passo() {
+      espera += 0.25;
+      if (engine.level > 0.02) som += 0.25;
+      if (som >= 3) { cb({ estereo: engine.estereo === true, atraso: (engine.lagMs || 0) + (engine.chunkMs || 0), nome: nome }); return; }
+      if (espera > 90) return;   // ninguém tocou nada: não decide, tenta de novo no próximo boot
+      autoT = setTimeout(passo, 250);
+    })();
+  }
+  function decideCaptura(nome) {
+    state.capAuto = nome; save();
+    toast('Captura automática: ' + (nome === 'sistema' ? 'do sistema' : 'nativa'));
+    setAudioStat(nome === 'sistema' ? 'Áudio do computador' : 'Estéreo nativo', 'ok', 'Captura automática escolheu ' + (nome === 'sistema' ? '“Do sistema”' : '“Nativa”') + '. Reconectar refaz o teste.');
   }
   function unlockAudio() {
     if (engine.ctx && engine.ctx.state === 'suspended') engine.ctx.resume();
@@ -1665,6 +1721,13 @@
     else if (k === 't') cycleTheme(e.shiftKey ? -1 : 1);
     else if (k === 'h') setToolbarMode(state.toolbar === 'fixo' ? 'auto' : 'fixo');
     else if (k === 'f') toggleHud();
+    else if (k === 'c' && hudOn) copiaDiag();
+    else if (k === 'r') {
+      var alvo = null; Object.keys(panels).forEach(function (u) { var q = panels[u]; if (q && q.mouse && q.mouse.over) alvo = q; });
+      if (alvo) toggleRec(alvo); else toast('Passe o mouse sobre um visual e aperte R pra gravar');
+    }
+    else if (/^[1-9]$/.test(k) && PRESETS[+k - 1]) { applyPreset(PRESETS[+k - 1].id); toast(PRESETS[+k - 1].nome); if (setOpen) renderSettings(); }
+    else if (k === 'd') { state.detalhe = state.detalhe === 'alto' ? 'padrao' : 'alto'; aplicaDetalhe(); save(); toast('Detalhe ' + (state.detalhe === 'alto' ? 'alto' : 'padrão')); if (setOpen && setTab === 'visuais') renderSettings(); }
   });
 
   /* ================= JANELA (app de computador) ================= */
@@ -1743,6 +1806,36 @@
       else if (window.CV_QUALITY < 1) { window.CV_QUALITY = Math.min(1, window.CV_QUALITY + 0.2); resizeAll(true); qCool = 2.5; }
     }
   }
+  /* v2.5: custo de JS por painel (média móvel) e os 3 mais caros */
+  function jsPaineis() {
+    var lista = [], tot = 0;
+    for (var id in panels) { var pp = panels[id]; if (pp.ms > 0) { lista.push([pp.def.name, pp.ms]); tot += pp.ms; } }
+    lista.sort(function (a, b) { return b[1] - a[1]; });
+    return { total: tot, top: lista.slice(0, 3).map(function (x) { return x[0] + ' ' + x[1].toFixed(2); }).join(' · ') || '-', lista: lista };
+  }
+  /* v2.5: texto pronto pra colar na conversa. Tudo que decide fluidez e atraso num lugar só */
+  function diagText() {
+    var e = engine, jp = jsPaineis(), ana = e.latencyMs || 0, tela = presentMs();
+    var via = e.nativeOn ? 'nativo' : (e.sab ? 'direto' : (e.tapNode ? 'tap' : (e.analyser ? 'reserva' : 'sem som')));
+    var L = [];
+    L.push('Caramujo Vision ' + APP_VERSAO + ' · ' + (navigator.userAgent.match(/Electron\/[\d.]+/) || ['web'])[0] + ' · ' + (navigator.userAgent.match(/Mac OS X [\d_]+/) || [''])[0]);
+    L.push('tela ' + telaHz.toFixed(0) + ' Hz · limite ' + (state.fps || 'da tela') + ' · dpr ' + (window.devicePixelRatio || 1) + ' · janela ' + innerWidth + 'x' + innerHeight);
+    L.push('captura ' + state.captura + (state.captura === 'auto' ? ' → ' + (state.capAuto || 'testando') : '') + ' (via ' + via + ') · ' + (e.estereo === undefined ? 'estéreo medindo' : e.estereo ? 'estéreo' : 'MONO') + ' · taxa ' + (e.sr || 0));
+    L.push('bloco ' + (e.chunkMs || 0).toFixed(1) + ' ms · fluidez ' + e.fluidez + ' · recuo ' + (e.lagMs || 0).toFixed(1) + ' ms · intervalo ' + (e.gapMs || 0).toFixed(1) + ' ms · faltou ' + (e.underruns || 0));
+    L.push('som → olho ' + (ana + tela).toFixed(0) + ' ms (análise ' + ana.toFixed(1) + ' + tela ' + tela.toFixed(0) + ') · reação rápida ' + (e.rapido ? 'ligada' : 'desligada'));
+    L.push('detalhe ' + state.detalhe + ' · reação ' + state.reacao + ' · tema ' + state.theme + ' · acabamento ' + (fxActive() ? state.fx.preset : 'off') + ' · arte ' + Math.round((window.CV_QUALITY || 1) * 100) + '%' + (ART_SKIP > 1 ? ' 1/2' : ''));
+    L.push('js total ' + jp.total.toFixed(2) + ' ms/quadro · ' + jp.lista.map(function (x) { return x[0] + ' ' + x[1].toFixed(2); }).join(' · '));
+    return L.join('\n');
+  }
+  function latTxt() { var v = (engine.latencyMs || 0) + presentMs(); return engine.hasSignal() ? v.toFixed(0) + ' ms' : '-'; }
+  function copiaDiag() {
+    var tx = diagText();
+    var ok = function () { toast('Diagnóstico copiado. Cole na conversa.'); };
+    try { navigator.clipboard.writeText(tx).then(ok, function () { toast('Não consegui copiar'); }); }
+    catch (er) { toast('Não consegui copiar'); }
+    return tx;
+  }
+  var APP_VERSAO = '2.5.0';
   function drawHud(dt) {
     hudAcc += dt; hudN++;
     if (hudAcc < 0.25) return;
@@ -1756,6 +1849,7 @@
       '\nbloco ' + (engine.chunkMs || 0).toFixed(1) + ' ms · ' + via + (engine.estereo === false ? ' mono' : '') +
       '\nfluidez ' + (engine.fluidez === 'imediata' ? 'imediata' : 'suave') + ' · recuo ' + (engine.lagMs || 0).toFixed(1) + ' ms' +
       (engine.async ? ' · intervalo ' + (engine.gapMs || 0).toFixed(1) + ' ms · faltou ' + (engine.underruns || 0) : '') +
+      '\njs ' + jsPaineis().total.toFixed(2) + ' ms · tela ' + telaHz.toFixed(0) + ' Hz · ' + jsPaineis().top +
       '\nacabamento ' + (fxActive() ? state.fx.preset + ' ' + (fxMs + fxMsUp).toFixed(2) + ' ms' : 'off') +
       (ART_SKIP > 1 ? ' · arte 1/2' : '') + (window.CV_QUALITY < 1 ? ' · arte ' + Math.round(window.CV_QUALITY * 100) + '%' : '');
   }
@@ -1770,8 +1864,9 @@
     if (kind === 'quieto') emptyMsg.textContent = 'Aguardando som';
   }
   $('emptybtn').addEventListener('click', function () { openSettings('audio'); });
+  $('emptyretry').addEventListener('click', function () { state.audioIn = 'auto'; state.capAuto = undefined; save(); startComputerAudio(); toast('Reconectando o áudio…'); });
 
-  var FRAME_MIN = 1 / 144;
+  var FRAME_MIN = 1 / 144, telaHz = 60;
   var last = performance.now(), frameN = 0, silTime = 0, uiAcc = 0, dormindo = false;
   function loop(now) {
     requestAnimationFrame(loop);
@@ -1780,7 +1875,8 @@
     if (raw < minDt) return;
     var dt = Math.min(0.05, raw);
     last = now;
-    if (paused) return;
+    if (raw > 0.002 && raw < 0.1) telaHz += (1 / raw - telaHz) * 0.05;   // v2.5: Hz que a tela entrega de fato
+    if (paused || document.hidden) return;   // v2.5: janela minimizada/oculta não desenha
     frameN++;
     watchPerf(dt);
     var t = now / 1000;
@@ -1825,7 +1921,9 @@
       if (isArt && !drawArt) continue;
       if (p.ctx) { p.ctx.lineJoin = 'round'; p.ctx.lineCap = 'round'; }
       CV.dtQuadro = isArt ? artDt : dt;      // o rastro apaga no relógio, não no quadro
+      var tD0 = performance.now();
       try { p.def.draw(p, d, isArt ? artDt : dt, t); } catch (e) { if (!p.erro) { p.erro = 1; console.error('[caramujo] ' + p.modId, e); } }
+      p.ms = (p.ms || 0) * 0.92 + (performance.now() - tD0) * 0.08;   // v2.5: JS do desenho, média móvel
       // o fundo vem do CSS do painel; só o vídeo gravado direto precisa dele pintado
       if (p.recDireto && p.ctx) fillBg(p, p.canvas, p.ctx);
       if (silFade < 1 && p.ctx) {
@@ -1849,6 +1947,7 @@
     if (uiAcc < 0.25) return;
     uiAcc = 0;
     setEmpty(semSinal > 2.5 ? 'erro' : (silTime > 6 ? 'quieto' : ''));
+    if (setOpen && setTab === 'audio') { var le = $('audlat'); if (le) le.textContent = latTxt(); }
     for (var rid in panels) {
       var rp = panels[rid];
       if (rp.rec) {

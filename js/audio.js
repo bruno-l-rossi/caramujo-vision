@@ -31,8 +31,9 @@
   'use strict';
 
   /* ================= FFT radix-2, tabelas prontas, zero alocação ================= */
-  function FFT(N) {
+  function FFT(N, W) {
     this.N = N;
+    this.W = W && W < N ? W : N;   // v2.5: janela de W amostras dentro de uma FFT de N (zero-padding)
     var levels = Math.round(Math.log(N) / Math.LN2);
     this.cos = new Float32Array(N / 2);
     this.sin = new Float32Array(N / 2);
@@ -57,22 +58,27 @@
        92 dB abaixo: os vales abrem e a serrilha de harmônicos aparece separada,
        que é exatamente o que se vê no analisador dele. Custa um lóbulo principal
        um pouco mais largo (pico levemente mais gordo), troca que vale muito. */
-    this.win = new Float32Array(N);
+    var Wn = this.W;
+    this.win = new Float32Array(Wn);
     var wsum = 0;
     var a0 = 0.35875, a1c = 0.48829, a2 = 0.14128, a3 = 0.01168;
-    for (i = 0; i < N; i++) {
-      var ph = 2 * Math.PI * i / (N - 1);
+    for (i = 0; i < Wn; i++) {
+      var ph = 2 * Math.PI * i / (Wn - 1);
       this.win[i] = a0 - a1c * Math.cos(ph) + a2 * Math.cos(2 * ph) - a3 * Math.cos(3 * ph);
       wsum += this.win[i];
     }
-    this.winGain = N / wsum;         // ≈ 2,79 na Blackman-Harris
+    /* v2.5: a normalização é pela SOMA DA JANELA (2/wsum), não pelo tamanho da FFT. Com
+       zero-padding a leitura de dB fica igual (tom a -6 dBFS lê -6 em qualquer pad) e só
+       aparecem mais pontos entre as raias de antes. Com W = N dá o mesmo número de sempre. */
+    this.winGain = Wn / wsum;        // ≈ 2,79 na Blackman-Harris
     this.mag = new Float32Array(N / 2);
   }
   /* lê N amostras do anel terminando em endIdx (exclusivo) e devolve magnitude normalizada */
   FFT.prototype.runRing = function (ring, endIdx) {
-    var N = this.N, re = this.re, im = this.im, rev = this.rev, win = this.win;
-    var mask = ring.length - 1, base = (endIdx - N) & mask, i, k;
-    for (i = 0; i < N; i++) { re[rev[i]] = ring[(base + i) & mask] * win[i]; im[rev[i]] = 0; }
+    var N = this.N, W = this.W, re = this.re, im = this.im, rev = this.rev, win = this.win;
+    var mask = ring.length - 1, base = (endIdx - W) & mask, i, k;
+    for (i = 0; i < W; i++) { re[rev[i]] = ring[(base + i) & mask] * win[i]; im[rev[i]] = 0; }
+    for (i = W; i < N; i++) { re[rev[i]] = 0; im[rev[i]] = 0; }
     for (var size = 2; size <= N; size <<= 1) {
       var half = size >> 1, step = N / size;
       for (i = 0; i < N; i += size) {
@@ -85,7 +91,7 @@
         }
       }
     }
-    var half2 = N / 2, sc = this.winGain * 2 / N, mag = this.mag;
+    var half2 = N / 2, sc = this.winGain * 2 / W, mag = this.mag;
     for (k = 0; k < half2; k++) mag[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]) * sc;
     return mag;
   };
@@ -146,7 +152,9 @@
     this.ringL = new Float32Array(RING);
     this.ringR = new Float32Array(RING);
     this.wr = 0;               // total de amostras escritas (cresce sempre)
-    this.rd = 0;               // já consumido pelo LUFS/beat
+    this.rd = 0;               // já consumido pelo LUFS
+    this.rdB = 0;              // v2.5: já consumido pelo beat/reação (pode ir além da cabeça: reação rápida)
+    this.rapido = true;        // v2.5 REAÇÃO RÁPIDA: beat e reação leem o bloco mais novo, não a cabeça
     /* v2.4 CABEÇA DE LEITURA. O som do sistema chega em BLOCOS: o ScreenCaptureKit
        manda uns 20 ms de uma vez. Lendo sempre a amostra mais nova, a 120 quadros por
        segundo 2 de cada 3 quadros viam o MESMO som: o estéreo e o osciloscópio
@@ -773,7 +781,7 @@
     this.sourceKind = 'none';
     this.synthPaused = false;
     this.hasRing = false;
-    this.wr = 0; this.rd = 0; this.sabRead = 0;
+    this.wr = 0; this.rd = 0; this.rdB = 0; this.sabRead = 0;
     this.ph = 0; this.pos = 0; this.adv = 0; this.lagMs = 0; this.gapMs = 0;
     this._arrT = 0; this._gn = 0; this._gi = 0; this.underruns = 0;
     this.estereo = undefined; this._eS = 0; this._eM = 0;
@@ -1051,8 +1059,8 @@
     if (to - from > RING) from = to - RING;         // ficou parado demais: pula o que já perdeu
     if (to > from) {
       this.processLufs(from, to);
-      this.processBeat(from, to);
       this.rd = to;
+      if (!(this.rapido && this.async)) { this.processBeat(from > this.rdB ? from : this.rdB, to); if (to > this.rdB) this.rdB = to; }
       /* v2.4: esse caminho é estéreo de verdade? Energia da diferença contra a soma, ~1 s.
          O loopback do sistema pode chegar em mono (ScreenCaptureKit) ou em estéreo (Core
          Audio, macOS 15+): o ajuste mostra o que chegou, em vez de chutar "mono". */
@@ -1062,6 +1070,15 @@
       this._eS = (this._eS || 0) + (eS - (this._eS || 0)) * kE;
       this._eM = (this._eM || 0) + (eM - (this._eM || 0)) * kE;
       if (this._eM > 1e-4) this.estereo = this._eS > this._eM * 1e-5;
+    }
+    /* v2.5 REAÇÃO RÁPIDA: o beat e os envelopes do grave leem até o fim do que JÁ CHEGOU (wr),
+       sem esperar a cabeça de leitura. Com bloco de ~21 ms isso adianta o pulso da arte em
+       ~1 recuo; a onda, o espectro e o LUFS seguem na cabeça (lisos). Só vale pra fonte que
+       chega sozinha (IPC): a fonte drenada no quadro já lê no fim. */
+    if (this.rapido && this.async) {
+      var fb = this.rdB, tb = this.wr;
+      if (tb - fb > RING) fb = tb - RING;
+      if (tb > fb) { this.processBeat(fb, tb); this.rdB = tb; }
     }
     this.beat = this.beatHit;
     this.beatHit = false;
@@ -1139,37 +1156,55 @@
      canal só, 's' = SIDE. O MiniMeters desenha DUAS curvas, uma por canal, e é isso que dá a leitura
      de estéreo no espectro. Cada canal tem a sua caixa de cache, então nenhuma FFT
      nasce duas vezes. */
-  AudioEngine.prototype.spectrum = function (n, ch) {
+  /* v2.5 pad: zero-padding. A janela continua n amostras (mesma resposta no tempo, mesma
+     largura de lóbulo, mesma leitura de dB); a FFT é n*pad e devolve n*pad/2 pontos. O
+     espectro de uma janela finita é uma função contínua: pad só amostra ela mais denso,
+     então o pico do grave desliza entre as raias antigas em vez de pular de uma a outra.
+     Nada de frequência inventada. specBinHz passa a valer sr / (n*pad).
+     O módulo lê também sl.pw (potência, mag²), que é de graça: a média do espectro é na
+     potência e não precisa mais de Math.pow(10, db/10) por raia por quadro. */
+  AudioEngine.prototype.spectrum = function (n, ch, pad) {
+    return this.specCalc(n, ch, pad, -1).db;
+  };
+  AudioEngine.prototype.spectrumPw = function (n, ch, pad) {
+    return this.specCalc(n, ch, pad, -1).pw;
+  };
+  /* endIdx >= 0: espectro terminando num ponto do anel (o espectrograma pede um por
+     COLUNA, não um por quadro), sem cache de quadro. */
+  AudioEngine.prototype.specCalc = function (n, ch, pad, endIdx) {
     n = n || 4096;
     if (n < 1024) n = 1024; if (n > 16384) n = 16384;
-    /* CACHE POR TAMANHO, não uma posição só. Com uma posição só, dois painéis de
-       Espectro em tamanhos diferentes (4096 e 8192) reconstruíam as tabelas da FFT
-       em TODO quadro: 378 µs contra 77 µs, 5x mais caro, e as tabelas de seno,
-       cosseno e bit-reverse eram jogadas fora duas vezes por quadro. Agora cada
-       tamanho tem a sua caixa e a FFT nasce uma vez na vida. */
+    pad = pad === 2 || pad === 4 || pad === 8 ? pad : 1;
+    var NF = n * pad;
+    if (NF > 32768) { pad = 32768 / n; NF = 32768; }
     var slots = this._spec || (this._spec = {});
-    var key = (ch === 'l' || ch === 'r' || ch === 's') ? n + ch : n;
+    var ec = endIdx >= 0;
+    var key = n + (ch === 'l' || ch === 'r' || ch === 's' ? ch : '') + (pad > 1 ? 'p' + pad : '') + (ec ? 'c' : '');
     var sl = slots[key];
-    if (!sl) sl = slots[key] = { fft: new FFT(n), buf: new Float32Array(n), db: new Float32Array(n / 2), frame: -1 };
+    if (!sl) sl = slots[key] = { fft: new FFT(NF, n), buf: new Float32Array(n), db: new Float32Array(NF / 2), pw: new Float32Array(NF / 2), frame: -1 };
     // o módulo lê specBinHz logo depois de chamar: precisa valer também no cache quente
-    this.specBinHz = (this.sr / 2) / (n / 2);
-    this._specN = n; this._specDb = sl.db;    // compatibilidade com quem lia esses nomes
-    if (sl.frame === this._frame) return sl.db;
+    this.specBinHz = (this.sr / 2) / (NF / 2);
+    this._specN = NF; this._specDb = sl.db;
+    if (!ec && sl.frame === this._frame) return sl;
     var mask = RING - 1, L = this.ringL, R = this.ringR, buf = sl.buf;
-    var P = this.pos || this.wr, have = Math.min(P, n), base = (P - have) & mask;
-    var i, pad = n - have;
-    for (i = 0; i < pad; i++) buf[i] = 0;
-    if (ch === 'l') { for (i = 0; i < have; i++) buf[pad + i] = L[(base + i) & mask]; }
-    else if (ch === 'r') { for (i = 0; i < have; i++) buf[pad + i] = R[(base + i) & mask]; }
+    var P = ec ? endIdx : (this.pos || this.wr), have = Math.min(P, n), base = (P - have) & mask;
+    var i, z = n - have;
+    for (i = 0; i < z; i++) buf[i] = 0;
+    if (ch === 'l') { for (i = 0; i < have; i++) buf[z + i] = L[(base + i) & mask]; }
+    else if (ch === 'r') { for (i = 0; i < have; i++) buf[z + i] = R[(base + i) & mask]; }
     // 's' = SIDE ((L-R)/2): a curva azul do MiniMeters. Medido no vídeo: o chimbal
     // que só existe na diferença entre os canais aparece azul por cima do vermelho.
-    else if (ch === 's') { for (i = 0; i < have; i++) { var k2 = (base + i) & mask; buf[pad + i] = (L[k2] - R[k2]) * 0.5; } }
-    else { for (i = 0; i < have; i++) { var k = (base + i) & mask; buf[pad + i] = (L[k] + R[k]) * 0.5; } }
+    else if (ch === 's') { for (i = 0; i < have; i++) { var k2 = (base + i) & mask; buf[z + i] = (L[k2] - R[k2]) * 0.5; } }
+    else { for (i = 0; i < have; i++) { var k = (base + i) & mask; buf[z + i] = (L[k] + R[k]) * 0.5; } }
     var mag = sl.fft.runRing(buf, n);
-    var db = sl.db;
-    for (i = 0; i < mag.length; i++) db[i] = mag[i] > 1e-7 ? 20 * Math.log10(mag[i]) : -140;
+    var db = sl.db, pw = sl.pw;
+    for (i = 0; i < mag.length; i++) {
+      var mg = mag[i];
+      pw[i] = mg * mg;
+      db[i] = mg > 1e-7 ? 20 * Math.log10(mg) : -140;
+    }
     sl.frame = this._frame;
-    return db;
+    return sl;
   };
 
   // valor principal do medidor: LUFS momentâneo (400ms), como manda a BS.1770

@@ -498,12 +498,12 @@ console.log('espectro no molde do MiniMeters:');
   // mid e side: tom só na esquerda a -12 lê -18 nos dois; tom igual nos dois canais não tem side
   const o2 = novo(); o2.n = 0;
   passa(o2, 0.6, tom(880, Math.pow(10, -12 / 20)), null);
-  const k88 = Math.round(880 / o2.E.specBinHz), dbSide = o2.E.spectrum(4096, 's'), dbMid = o2.m.st.dbS;
+  const k88 = Math.round(880 / o2.E.specBinHz), dbSide = o2.E.spectrum(4096, 's', CV.detalhePad(4096)), dbMid = o2.m.st.dbS;
   check('mid e side: tom só na esquerda a -12 dBFS lê -18 nas duas curvas (é o que o dele mostra)',
     Math.abs(dbMid[k88] + 18) < 1.2 && Math.abs(dbSide[k88] + 18) < 1.2, 'mid ' + dbMid[k88].toFixed(1) + ' · side ' + dbSide[k88].toFixed(1));
   const o3 = novo(); o3.n = 0;
   passa(o3, 0.3, tom(880, 0.25), tom(880, 0.25));
-  check('som igual nos dois canais deixa a curva azul no chão', o3.E.spectrum(4096, 's')[k88] < -100, o3.E.spectrum(4096, 's')[k88].toFixed(0) + ' dB');
+  check('som igual nos dois canais deixa a curva azul no chão', o3.E.spectrum(4096, 's', CV.detalhePad(4096))[k88] < -100, o3.E.spectrum(4096, 's', CV.detalhePad(4096))[k88].toFixed(0) + ' dB');
   check('leitura no formato dele', CV.leituraMM(-6.01, 999.96) === '-6.01dB | 999.96Hz | B5  + 21 Cents' && CV.leituraMM(-24, 12000) === '-24.00dB | 12.00kHz | F#9 + 23 Cents',
     CV.leituraMM(-6.01, 999.96));
 }
@@ -766,8 +766,8 @@ check('o número do LUFS continua crescendo com o painel', CV.fsBig({ w: 900, h:
      2.048 raias viram ~1.000 pontos por curva. As barras saem num polígono só (um ponto
      por coluna de dispositivo, 1.440 + 1 aqui), pintado com a fileira de cores. */
   const sp = mede('spectrum'), segS = (sp.lineTo || 0) + (sp.quadraticCurveTo || 0), segC = segS - 1441;
-  check('espectro no molde do MiniMeters sem estourar o desenho: até 1.200 pontos por curva, barras num fill só',
-    segC > 0 && segC <= 2400 && (sp.fill || 0) <= 2 && !(sp.rect || 0) && sp.createPattern === 1,
+  check('espectro no molde do MiniMeters sem estourar o desenho: até 1.600 pontos por curva com Detalhe Alto (zero-padding x4), barras num fill só',
+    segC > 0 && segC <= 3200 && (sp.fill || 0) <= 2 && !(sp.rect || 0) && sp.createPattern === 1,
     segC + ' segmentos nas curvas · ' + (sp.fill || 0) + ' fill · ' + (sp.rect || 0) + ' retângulos');
   const sc = mede('scope'), segO = (sc.lineTo || 0) + (sc.quadraticCurveTo || 0);
   // v2.3: no tema MiniMeters o osciloscópio é a janela fixa dele, em reta (um ponto por pixel de tela)
@@ -803,7 +803,7 @@ check('gravação compensa a sincronia do clipe', /setRecordDelayMs\(\(engine\.l
 check('gravação tem as três medidas de rede social', /'916': \[1080, 1920\], '11': \[1080, 1080\], '169': \[1920, 1080\]/.test(srcApp));
 check('soltar arquivo de áudio na janela toca a faixa', /addEventListener\('drop'/.test(srcApp) && /engine\.playFile\(f\)/.test(srcApp));
 check('espectro guarda uma caixa por tamanho e por canal, side incluído (nenhuma FFT nasce duas vezes)',
-  /this\._spec \|\| \(this\._spec = \{\}\)/.test(srcAud) && /var key = \(ch === 'l' \|\| ch === 'r' \|\| ch === 's'\) \? n \+ ch : n;/.test(srcAud));
+  /this\._spec \|\| \(this\._spec = \{\}\)/.test(srcAud) && /var key = n \+ \(ch === 'l' \|\| ch === 'r' \|\| ch === 's' \? ch : ''\)/.test(srcAud));
 
 /* ================= laço principal ================= */
 console.log('laço:');
@@ -931,6 +931,55 @@ try {
   handlers['cv-win-pin']({}, true);
   check('sempre na frente liga', win.top === true);
 } catch (e) { check('processo principal carrega e responde', false, e.stack.split('\n').slice(0, 3).join(' | ')); }
+
+/* ================= v2.5 · detalhe alto ================= */
+console.log('detalhe alto (v2.5):');
+try {
+  const sr = 48000, mk = (f) => { const E = new g.AudioEngine(); E.sr = sr; const x = new Float32Array(sr); for (let i = 0; i < sr; i++) x[i] = 0.5 * Math.sin(2 * Math.PI * f * i / sr); E.feed(x, x, sr, true); E.pos = E.wr; E._frame = 0; return E; };
+  const pico = (E, pad) => { E._frame++; const db = E.spectrum(4096, undefined, pad); let k = 0; for (let i = 1; i < db.length; i++) if (db[i] > db[k]) k = i; return { db: db[k], hz: k * E.specBinHz, n: db.length }; };
+  const E1 = mk(1000), a1 = pico(E1, 1), a4 = pico(E1, 4);
+  check('zero-padding não muda a leitura de dB: 1 kHz a -6 dBFS lê o mesmo (±0,5 dB) com pad 1 e pad 4', Math.abs(a1.db - a4.db) < 0.5 && Math.abs(a4.db + 6.02) < 0.15, a1.db.toFixed(2) + ' / ' + a4.db.toFixed(2));
+  check('zero-padding x4 dá 4x mais pontos, com a raia em sr/(n*pad)', a4.n === a1.n * 4 && Math.abs(E1.specBinHz - sr / 16384) < 1e-6, a4.n + ' pontos · ' + E1.specBinHz.toFixed(3) + ' Hz');
+  const E2 = mk(1005.86), b1 = pico(E2, 1), b4 = pico(E2, 4);
+  check('tom entre duas raias: o pad x4 lê mais perto do real (-6,02 dB) que o pad 1', Math.abs(b4.db + 6.02) < Math.abs(b1.db + 6.02), b1.db.toFixed(2) + ' > ' + b4.db.toFixed(2));
+  check('potência pronta (mag²) bate com o dB: 10·log10(pw) = dB', (() => { E2._frame++; const db = E2.spectrum(4096, undefined, 4), pw = E2.spectrumPw(4096, undefined, 4); let k = 0; for (let i = 1; i < db.length; i++) if (db[i] > db[k]) k = i; return Math.abs(10 * Math.log10(pw[k]) - db[k]) < 0.01; })());
+  check('Detalhe Alto é o padrão (CV.detalhe e state)', CV.detalhe === 'alto' && A.state.detalhe === 'alto' && CV.detalhePad(4096) === 4 && CV.detalhePad(16384) === 1);
+  const st2 = A.normalize(Object.assign(A.freshState(), { detalhe: 'xyz' }));
+  check('estado antigo ou torto migra pra Alto sozinho', st2.detalhe === 'alto');
+  check('o eixo do espectro NÃO muda com o pad (Δ = raia da janela de 4096)', /dRaia/.test(fs.readFileSync(path.join(BASE, 'js/modules.js'), 'utf8')));
+  // espectrograma: uma FFT por coluna, ImageData, sem retângulos
+  const sg = CV.registry.spectrogram, cvs = makeEl('canvas'); cvs.width = 600; cvs.height = 200;
+  const bufc = makeEl('canvas'); bufc.width = 600; bufc.height = 200;
+  let putN = 0, rectN = 0;
+  const ctxFalso = () => new Proxy({}, { get(t, k) { if (k in t) return t[k]; if (k === 'measureText') return () => ({ width: 10 }); return () => {}; }, set(t, k, v) { t[k] = v; return true; } });
+  const bcx = Object.assign(ctxFalso(), { createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }), putImageData: () => { putN++; }, fillRect: () => { rectN++; } });
+  bcx.canvas = bufc;
+  const mS = { canvas: cvs, ctx: ctxFalso(), w: 300, h: 100, dpr: 2, st: {}, modId: 'spectrogram', s: Object.assign({}, sg.defaults), mouse: { over: false } };
+  const E3 = mk(440); E3.adv = 1600; E3.pos = E3.wr;
+  CV.scrollRing.next = CV.scrollRing.next;
+  sg.colunaPx(mS, E3, mS.s, bufc, bcx, 3, 30, 16000);
+  check('espectrograma pinta a coluna num ImageData só (nada de fillRect por linha)', putN === 1 && rectN === 0, putN + ' put · ' + rectN + ' rect');
+  // F2: reação rápida + captura automática
+  const src = fs.readFileSync(path.join(BASE, 'js/app.js'), 'utf8');
+  const stR = A.normalize(Object.assign(A.freshState(), { captura: 'nativa', v25: 0, rapido: undefined }));
+  check('estado v2.4 migra pra captura Automática uma vez só', stR.captura === 'auto' && stR.v25 === 1);
+  const stR2 = A.normalize(Object.assign(A.freshState(), { captura: 'sistema', v25: 1 }));
+  check('quem escolheu "Do sistema" depois da migração fica nela', stR2.captura === 'sistema');
+  check('Reação rápida liga por padrão', A.freshState().rapido === true && stR.rapido === true);
+  check('captura Automática e Reação rápida aparecem na aba Áudio', /\['auto', 'Automática'\]/.test(src) && /rap: \{ k: 'rap'/.test(src));
+  const E4 = mk(80); E4.async = true; E4.rapido = true;
+  check('motor tem a trilha rápida (rdB) e o interruptor rapido', E4.rdB === 0 && E4.rapido === true);
+  // F3/F4: Camadas por tempo, atalhos, reconectar
+  const wl = CV.registry.wavelayers, cw = makeEl('canvas'); cw.width = 600; cw.height = 200;
+  const mW = { canvas: cw, ctx: ctxFalso(), w: 300, h: 100, dpr: 2, st: {}, modId: 'wavelayers', s: Object.assign({}, wl.defaults), mouse: { over: false } };
+  wl.init(mW);
+  const E5 = mk(220); E5.adv = 1600; E5.pos = E5.wr;
+  const runW = (hz, seg) => { mW.st.hist = []; mW.st.acc = 0; const n = Math.round(hz * seg); for (let i = 0; i < n; i++) { try { wl.draw(mW, E5, 1 / hz, i / hz); } catch (e) { return -1; } } return mW.st.hist.length; };
+  const h30 = runW(30, 0.5), h120 = runW(120, 0.5);
+  check('Camadas: o ritmo da pilha não depende da taxa de quadros (30 Hz ≈ 120 Hz)', h30 > 0 && Math.abs(h30 - h120) <= 1, h30 + ' vs ' + h120);
+  check('atalhos 1–9, R e botão Reconectar existem', /\/\^\[1-9\]\$\//.test(src) && /k === 'r'/.test(src) && /emptyretry/.test(src) && /emptyretry/.test(fs.readFileSync(path.join(BASE, 'index.html'), 'utf8')));
+  check('janela oculta não desenha (document.hidden)', /document\.hidden/.test(src));
+} catch (e) { check('detalhe alto carrega e responde', false, e.stack.split('\n').slice(0, 3).join(' | ')); }
 
 console.log('\n' + okN + ' checagens ok');
 console.log(fail === 0 ? 'SMOKE PASSOU' : 'SMOKE FALHOU: ' + fail);
