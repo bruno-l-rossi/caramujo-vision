@@ -143,6 +143,7 @@ ipcMain.handle('cv-native-why', () => {
 });
 
 ipcMain.handle('cv-native-start', async () => {
+  tapStopRaw();   // v2.6: só uma captura por vez
   const mod = getNativeMod();
   if (!mod) throw new Error('sem-modulo-nativo');
   const AudioRecorder = mod.AudioRecorder || (mod.default && mod.default.AudioRecorder);
@@ -178,8 +179,80 @@ ipcMain.handle('cv-native-start', async () => {
 });
 
 ipcMain.handle('cv-native-stop', async () => {
+  tapStopRaw();
   if (nativeRec) { try { await nativeRec.stop(); } catch (e) {} nativeRec = null; }
   return true;
+});
+
+/* ---------- TAP do Core Audio (v2.6): bloco pequeno, escolhido por nós ----------
+   native/coretap (macOS 14.2+) cria um tap global do som do sistema e entrega em blocos de
+   128 a 512 amostras (o ScreenCaptureKit entrega 20 ms fixos). Sai pelo MESMO canal
+   cv-native-audio, então a tela não muda. Se o módulo não estiver compilado, ou o macOS for
+   velho, ou faltar permissão, o app segue na captura nativa de antes. Build: npm run audio-tap. */
+let tapMod = null;
+let tapErr = '';
+let tapOn = false;
+let tapOpts = { frames: 256 };
+let tapRate = 0;
+let tapRestartT = null;
+function getTapMod() {
+  if (tapMod !== null) return tapMod;
+  try {
+    let p = path.join(__dirname, '..', 'native', 'coretap', 'build', 'Release', 'coretap.node');
+    p = p.replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
+    tapMod = require(p);
+  } catch (e) { tapErr = String((e && e.message) || e); tapMod = false; }
+  return tapMod;
+}
+function tapStopRaw() {
+  tapOn = false;
+  clearTimeout(tapRestartT);
+  const m = getTapMod();
+  if (m) { try { m.stop(); } catch (e) {} }
+}
+function tapRelogio() { return performance.timeOrigin + performance.now(); }
+function tapHandler(tipo, buf) {
+  if (tipo === 0 && buf) {
+    if (win && !win.isDestroyed()) win.webContents.send('cv-native-audio', buf, tapRelogio());
+  } else if (tipo === 1 && tapOn) {
+    // a saída padrão mudou (fone, AirPods): recomeça o tap na nova saída
+    clearTimeout(tapRestartT);
+    tapRestartT = setTimeout(() => {
+      if (!tapOn) return;
+      const m = getTapMod(), antes = tapRate;
+      try {
+        m.stop();
+        const ni = m.start({ frames: tapOpts.frames }, tapHandler);
+        tapRate = ni.sampleRate;
+        if (Math.abs(ni.sampleRate - antes) > 1 && win && !win.isDestroyed()) win.webContents.send('cv-native-error', 'taxa:' + ni.sampleRate);
+      } catch (e) {
+        if (win && !win.isDestroyed()) win.webContents.send('cv-native-error', 'tap-reinicio-falhou: ' + String((e && e.message) || e));
+      }
+    }, 400);
+  }
+}
+function tapStartRaw() {
+  const info = getTapMod().start({ frames: tapOpts.frames }, tapHandler);
+  tapOn = true;
+  tapRate = info.sampleRate;
+  return info;
+}
+ipcMain.handle('cv-tap-available', () => { const m = getTapMod(); return !!(m && m.isSupported()); });
+ipcMain.handle('cv-tap-why', () => {
+  const m = getTapMod();
+  if (!m) return { ok: false, reason: tapErr || 'modulo do tap nao compilado (npm run audio-tap)' };
+  return { ok: m.isSupported(), perm: m.permission(), reason: m.isSupported() ? '' : 'precisa do macOS 14.2 ou mais novo' };
+});
+ipcMain.handle('cv-tap-start', async (e, frames) => {
+  const m = getTapMod();
+  if (!m) throw new Error('sem-modulo-tap');
+  if (!m.isSupported()) throw new Error('so-macos-14.2');
+  if (m.permission() === 'denied') throw new Error('sem-permissao-de-audio');
+  if (nativeRec) { try { await nativeRec.stop(); } catch (er) {} nativeRec = null; }
+  tapStopRaw();
+  tapOpts = { frames: Math.max(64, Math.min(1024, Math.round(Number(frames) || 256))) };
+  const info = tapStartRaw();
+  return { sampleRate: info.sampleRate, channels: 2, frames: info.frames, name: info.name || 'ÁUDIO DO COMPUTADOR' };
 });
 
 /* ---------- modo barra fixa (stick): gruda numa borda da tela ----------
@@ -254,11 +327,14 @@ ipcMain.handle('cv-win-pin', (e, on) => {
   return !!on;
 });
 
+app.on('before-quit', () => { tapStopRaw(); });
+
 /* ---------- ponte com a tela (renderer) ---------- */
 ipcMain.handle('cv-enable-loopback', () => { setLoopback(true); return true; });
 ipcMain.handle('cv-disable-loopback', () => { setLoopback(false); return true; });
 // ⏻ fecha o programa de verdade (não só a janela)
 ipcMain.handle('cv-win-close', async () => {
+  tapStopRaw();
   if (nativeRec) { try { await nativeRec.stop(); } catch (e) {} nativeRec = null; }
   app.quit();
 });

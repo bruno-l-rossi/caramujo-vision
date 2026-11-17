@@ -1,7 +1,7 @@
 {
   "name": "caramujo-vision",
   "productName": "Caramujo Vision",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Visualizador de audio em tempo real: medidores de estudio e arte que reage a musica",
   "author": "rideblan",
   "license": "UNLICENSED",
@@ -13,7 +13,9 @@
     "bench4": "electron . --bench4",
     "audio-nativo": "npm install native-recorder-nodejs --save-optional --force --foreground-scripts",
     "audio-nativo-check": "node -e \"try{const m=require('native-recorder-nodejs');const A=m.AudioRecorder||m.default&&m.default.AudioRecorder;console.log('OK: modulo carregou');console.log('saidas:',JSON.stringify((A.getDevices('output')||[]).map(d=>d.id+':'+d.name)));}catch(e){console.log('FALHOU:',e.message)}\"",
-    "dist-zip": "electron-builder --mac dmg zip --publish never"
+    "dist-zip": "electron-builder --mac dmg zip --publish never",
+    "audio-tap": "cmake-js compile --directory native/coretap",
+    "audio-tap-check": "node -e \"try{const m=require('./native/coretap/build/Release/coretap.node');console.log('OK: tap carregou · suportado:',m.isSupported(),'· permissao:',m.permission())}catch(e){console.log('FALHOU:',e.message)}\""
   },
   "//": "dist gera o .dmg em dist/: o usuário final só abre e arrasta pra Applications, sem terminal",
   "optionalDependencies": {
@@ -21,7 +23,9 @@
   },
   "devDependencies": {
     "electron": "^45.3.3",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "cmake-js": "^7.3.0",
+    "node-addon-api": "^8.0.0"
   },
   "build": {
     "appId": "com.caramujo.vision",
@@ -71,10 +75,12 @@
       "assets/logo.png",
       "electron/**",
       "build/icon.png",
-      "node_modules/native-recorder-nodejs/**"
+      "node_modules/native-recorder-nodejs/**",
+      "native/coretap/build/Release/coretap.node"
     ],
     "asarUnpack": [
-      "node_modules/native-recorder-nodejs/**"
+      "node_modules/native-recorder-nodejs/**",
+      "native/coretap/build/Release/coretap.node"
     ],
     "compression": "maximum"
   }

@@ -169,6 +169,12 @@ Pedido do Bruno: a música mexendo mais nos visuais, principalmente o grave, e c
 
 Todo módulo reage ao mouse, além do som. Estúdio informa no hover (frequência, nota, dB). Arte segue o cursor: o líquido do PSY entorta, o Ferro é atraído, os fios da Fita perseguem, o Túnel desloca o centro, o Caleidoscópio gira. A regra: encostar o mouse nunca quebra o visual, só puxa ele.
 
+## Tap e espectro rápido (v2.6)
+
+**Espectro.** Suavidade padrão 0,84 (era 0,90): cai ~146 dB/s e sobe em ~3 quadros a 60 qps. Foi pedido do Bruno, que sentia o espectro "devagar" ao lado do MiniMeters; o valor medido no vídeo (0,90, 86 dB/s) continua a um clique no controle Suavidade. Mais pontos de frequência (zero-padding) não resolveram a sensação: o que pesa é a janela de 4096 mais o decaimento, e o atraso até o olho.
+
+**Tap do Core Audio.** `native/coretap` (Objective-C++, N-API) cria um tap global do som do sistema, dentro de um dispositivo agregado privado, e escolhe o bloco (kAudioDevicePropertyBufferFrameSize). Entrega int16 estéreo pelo mesmo canal da captura nativa. Se faltar módulo, SDK ou permissão, o app cai na nativa sem aviso de erro.
+
 ## Detalhe e tempo real (v2.5)
 
 **Detalhe Alto é o padrão.** O espectro mantém a janela de 4096 amostras (a leitura em dB não muda) e roda a FFT em até 4× o tamanho com zero-padding: o gráfico ganha pontos de frequência e o pico desliza em vez de pular de raia em raia. O eixo continua o medido no MiniMeters (100 Hz a 29,7%, 1 kHz a 58,6%, 10 kHz a 88,7%). Custo medido: ~0,84 ms por quadro pra Mid+Side em 4× (número da bancada; vale o HUD no Mac). Se o quadro ficar caro, Padrão está a um `D` de distância.

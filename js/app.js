@@ -139,7 +139,7 @@
       v: 2, theme: 'minimeters', pos: desk ? 'bottom' : 'free', pinned: false, fps: 0,
       fx: { preset: 'off', amount: 0.8 }, recSize: 'tela', barH: BAR_DEF, colW: COL_DEF, reacao: 'forte',
       toolbar: 'auto', preset: 'barra', dirty: false, rows: rowsFromPreset(PRESET.barra), firstRun: true,
-      fluidez: 'suave', captura: 'auto', detalhe: 'alto', rapido: true, v25: 1
+      fluidez: 'suave', captura: 'auto', detalhe: 'alto', rapido: true, v25: 1, v26: 1, tapFrames: 256
     };
   }
 
@@ -208,8 +208,10 @@
     if (st.fluidez !== 'imediata') st.fluidez = 'suave';
     if (st.detalhe !== 'padrao') st.detalhe = 'alto';   // v2.5: Alto é o padrão, quem já tinha estado migra sozinho
     if (!st.v25) { st.captura = 'auto'; st.capAuto = undefined; st.v25 = 1; }   // v2.5: quem já tinha estado entra na captura Automática
-    if (st.captura !== 'sistema' && st.captura !== 'nativa') st.captura = 'auto';
-    if (st.capAuto !== 'sistema' && st.capAuto !== 'nativa') st.capAuto = undefined;
+    if (!st.v26) { st.capAuto = undefined; st.v26 = 1; }   // v2.6: a Automática testa o tap uma vez
+    if (st.captura !== 'sistema' && st.captura !== 'nativa' && st.captura !== 'tap') st.captura = 'auto';
+    if (st.capAuto !== 'sistema' && st.capAuto !== 'nativa' && st.capAuto !== 'tap') st.capAuto = undefined;
+    st.tapFrames = (st.tapFrames === 128 || st.tapFrames === 512) ? st.tapFrames : 256;
     st.rapido = st.rapido !== false;
     st.barH = Math.max(60, Math.min(600, +st.barH || BAR_DEF));
     st.colW = Math.max(140, Math.min(900, +st.colW || COL_DEF));
@@ -235,6 +237,7 @@
   CV.theme = state.theme;
   engine.fluidez = state.fluidez;
   engine.rapido = state.rapido !== false;
+  engine.onRateChange = function () { startComputerAudio(); };   // v2.6: a saída padrão trocou de taxa (fone)
   /* REAÇÃO AO SOM (v2.2): quanto a música mexe nos visuais, pra tela inteira. Nasce em
      Forte, que é o comportamento pedido: o grave comanda e o visual enche o painel.
      Cada visual ainda tem o ajuste fino dele (Reação, ou Tamanho nos medidores). */
@@ -1298,17 +1301,20 @@
       '<button class="btn" id="auddiag">Copiar diagnóstico</button></div></div>';
     var camposS = {
       flu: { k: 'flu', label: 'Fluidez', type: 'seg', opts: [['suave', 'Suave'], ['imediata', 'Imediata']] },
-      cap: { k: 'cap', label: 'Captura', type: 'seg', opts: [['auto', 'Automática'], ['nativa', 'Nativa'], ['sistema', 'Do sistema']] },
+      cap: { k: 'cap', label: 'Captura', type: 'seg', opts: [['auto', 'Automática'], ['tap', 'Tap'], ['nativa', 'Nativa'], ['sistema', 'Do sistema']] },
+      tapf: { k: 'tapf', label: 'Bloco do tap', type: 'seg', opts: [['128', '128'], ['256', '256'], ['512', '512']] },
       rap: { k: 'rap', label: 'Reação rápida', type: 'toggle' }
     };
     h += '<div class="sec"><h4>Tempo real</h4><div class="form">' + ctrlHtml(camposS.flu, state.fluidez, 'flu');
     if (desk) h += ctrlHtml(camposS.cap, state.captura, 'cap');
+    if (desk && (state.captura === 'tap' || (state.captura === 'auto' && state.capAuto === 'tap'))) h += ctrlHtml(camposS.tapf, String(state.tapFrames), 'tapf');
     h += ctrlHtml(camposS.rap, state.rapido !== false, 'rap');
     h += '<div class="fr"><label>Som → olho</label><span class="stat ok" id="audlat">' + latTxt() + '</span></div>';
     h += '</div><p class="note" style="margin-top:10px">O som do computador chega em blocos. <b>Suave</b> dá som novo a todo quadro, ' +
       'e o atraso extra é o tamanho de um bloco. <b>Imediata</b> mostra o bloco assim que ele chega, com o menor atraso, mas entre um bloco e outro o desenho para. ' +
       'A tecla F mostra o bloco, o recuo e o atraso total.</p>' +
-      '<p class="note"><b>Automática</b> começa na nativa e, depois de 3 segundos de som, testa a captura do sistema: fica na que chegar em estéreo com o menor atraso. <b>Reação rápida</b> faz o pulso e o grave da arte lerem o som assim que ele chega, sem esperar a onda (menos atraso no kick).</p>' +
+      '<p class="note"><b>Tap</b> (macOS 14.2 ou mais novo) capta pelo Core Audio com bloco de 128 a 512 amostras, bem menor que o da nativa (20 ms): é o caminho de menor atraso. Precisa do módulo compilado (<b>npm run audio-tap</b>) e da permissão de captura de áudio. <b>Bloco do tap</b>: menor = menos atraso, maior = mais folga.</p>' +
+      '<p class="note"><b>Automática</b> testa o tap primeiro; se ele não existir ou não chegar em estéreo com baixo atraso, começa na nativa e, depois de 3 segundos de som, testa a captura do sistema: fica na que chegar em estéreo com o menor atraso. <b>Reação rápida</b> faz o pulso e o grave da arte lerem o som assim que ele chega, sem esperar a onda (menos atraso no kick).</p>' +
       (desk ? '<p class="note"><b>Do sistema</b> usa a captura do próprio motor do app (Core Audio no macOS 15 ou mais novo). Vale testar: em algumas máquinas ela chega em bloco menor.</p>' : '') +
       '</div>';
     h += '<div class="sec"><h4>Dicas</h4>' +
@@ -1335,6 +1341,7 @@
     wireCtrls(setBody, camposS, function (k, v) {
       if (k === 'flu') { state.fluidez = v; engine.fluidez = v; save(); }
       if (k === 'cap') { state.captura = v; state.capAuto = undefined; state.audioIn = 'auto'; save(); startComputerAudio(); }
+      if (k === 'tapf') { state.tapFrames = +v; save(); startComputerAudio(); renderSettings(); }
       if (k === 'rap') { state.rapido = !!v; engine.rapido = !!v; save(); }
     });
     $('auddiag').addEventListener('click', copiaDiag);
@@ -1470,8 +1477,21 @@
         } else goLoopback();
       });
     };
+    /* v2.6: tap do Core Audio, bloco pequeno (128 a 512 amostras). Se faltar módulo, macOS 14.2
+       ou permissão, cai no fallback pedido (padrão: a captura nativa de antes). */
+    var goTap = function (depois, aoFalhar) {
+      return engine.startNativeCapture('coretap', state.tapFrames).then(function () {
+        setAudioStat('Tap Core Audio', 'ok');
+        if (depois) depois();
+      }).catch(function (err) {
+        console.warn('[caramujo] tap falhou:', String((err && err.message) || err));
+        if (desk.tapWhy) Promise.resolve(desk.tapWhy()).then(function (d) { console.warn('[caramujo] diagnóstico do tap:', JSON.stringify(d)); }).catch(function () {});
+        (aoFalhar || function () { goNativo(); })();
+      });
+    };
     setAudioStat('Conectando…', 'warn');
     clearTimeout(autoT);
+    if (desk && state.captura === 'tap' && desk.tapStart) { goTap(); return; }
     // Do sistema: pedido explícito
     if (desk && state.captura === 'sistema' && desk.enableLoopback) { goLoopback(''); return; }
     if (desk && state.captura === 'nativa' && desk.nativeStart) { goNativo(); return; }
@@ -1480,6 +1500,7 @@
        baixos = fica. Se não, testa "Do sistema" 3 s: se chegar em estéreo, fica nela (recuo
        zero); se não, volta pra nativa. A decisão fica salva até apertar Reconectar. */
     if (desk && state.captura === 'auto' && desk.nativeStart) {
+      var classico = function () {
       if (state.capAuto === 'sistema' && desk.enableLoopback) { goLoopback('Automático: o caminho do sistema chegou em estéreo e sem recuo.'); return; }
       if (state.capAuto === 'nativa') { goNativo(); return; }
       goNativo(function () { medeCaptura('nativa', function (nat) {
@@ -1490,6 +1511,21 @@
           goNativo(function () { decideCaptura('nativa'); }, true);
         }); });
       }); });
+      };
+      /* v2.6: o tap vem primeiro. Estéreo e atraso total (bloco + recuo) abaixo de 25 ms = fica.
+         Senão (ou se não houver tap) segue o teste de antes. */
+      if (state.capAuto === 'tap' && desk.tapStart) { goTap(); return; }
+      if (state.capAuto === undefined && desk.tapAvailable) {
+        Promise.resolve(desk.tapAvailable()).then(function (ok) {
+          if (!ok) return classico();
+          goTap(function () { medeCaptura('tap', function (t) {
+            if (t.estereo && t.atraso <= 25) return decideCaptura('tap');
+            classico();
+          }); }, classico);
+        }).catch(classico);
+        return;
+      }
+      classico();
       return;
     }
     if (desk && desk.enableLoopback) goLoopback();
@@ -1509,8 +1545,9 @@
   }
   function decideCaptura(nome) {
     state.capAuto = nome; save();
-    toast('Captura automática: ' + (nome === 'sistema' ? 'do sistema' : 'nativa'));
-    setAudioStat(nome === 'sistema' ? 'Áudio do computador' : 'Estéreo nativo', 'ok', 'Captura automática escolheu ' + (nome === 'sistema' ? '“Do sistema”' : '“Nativa”') + '. Reconectar refaz o teste.');
+    var rot = nome === 'sistema' ? 'do sistema' : (nome === 'tap' ? 'tap Core Audio' : 'nativa');
+    toast('Captura automática: ' + rot);
+    setAudioStat(nome === 'sistema' ? 'Áudio do computador' : (nome === 'tap' ? 'Tap Core Audio' : 'Estéreo nativo'), 'ok', 'Captura automática escolheu “' + rot + '”. Reconectar refaz o teste.');
   }
   function unlockAudio() {
     if (engine.ctx && engine.ctx.state === 'suspended') engine.ctx.resume();
@@ -1816,7 +1853,7 @@
   /* v2.5: texto pronto pra colar na conversa. Tudo que decide fluidez e atraso num lugar só */
   function diagText() {
     var e = engine, jp = jsPaineis(), ana = e.latencyMs || 0, tela = presentMs();
-    var via = e.nativeOn ? 'nativo' : (e.sab ? 'direto' : (e.tapNode ? 'tap' : (e.analyser ? 'reserva' : 'sem som')));
+    var via = e.nativeOn ? (e.nativeKind === 'coretap' ? 'tap core audio' : 'nativo') : (e.sab ? 'direto' : (e.tapNode ? 'tap' : (e.analyser ? 'reserva' : 'sem som')));
     var L = [];
     L.push('Caramujo Vision ' + APP_VERSAO + ' · ' + (navigator.userAgent.match(/Electron\/[\d.]+/) || ['web'])[0] + ' · ' + (navigator.userAgent.match(/Mac OS X [\d_]+/) || [''])[0]);
     L.push('tela ' + telaHz.toFixed(0) + ' Hz · limite ' + (state.fps || 'da tela') + ' · dpr ' + (window.devicePixelRatio || 1) + ' · janela ' + innerWidth + 'x' + innerHeight);
@@ -1835,14 +1872,14 @@
     catch (er) { toast('Não consegui copiar'); }
     return tx;
   }
-  var APP_VERSAO = '2.5.0';
+  var APP_VERSAO = '2.6.0';
   function drawHud(dt) {
     hudAcc += dt; hudN++;
     if (hudAcc < 0.25) return;
     var fps = hudN / hudAcc;
     hudAcc = 0; hudN = 0;
     var ana = engine.latencyMs || 0, tela = presentMs();
-    var via = engine.nativeOn ? 'nativo' : (engine.sab ? 'direto' : (engine.tapNode ? 'tap' : (engine.analyser ? 'reserva' : 'sem som')));
+    var via = engine.nativeOn ? (engine.nativeKind === 'coretap' ? 'tap core audio' : 'nativo') : (engine.sab ? 'direto' : (engine.tapNode ? 'tap' : (engine.analyser ? 'reserva' : 'sem som')));
     var n = Object.keys(panels).length;
     hudEl.textContent = fps.toFixed(0) + ' fps · ' + n + ' visuais' + (state.fps ? ' · limite ' + state.fps : '') +
       '\nsom → olho ' + (ana + tela).toFixed(0) + ' ms (análise ' + ana.toFixed(1) + ' + tela ' + tela.toFixed(0) + ')' +

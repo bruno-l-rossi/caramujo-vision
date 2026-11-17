@@ -932,17 +932,24 @@
   };
 
   /* ---------- CAPTURA NATIVA: PCM direto no anel, sem AudioContext ---------- */
-  AudioEngine.prototype.startNativeCapture = function () {
-    var self = this;
+  /* modo 'coretap' (v2.6): tap do Core Audio com bloco pequeno (frames amostras);
+     qualquer outro valor: ScreenCaptureKit (bloco fixo de ~20 ms). Mesmo anel, mesmo canal. */
+  AudioEngine.prototype.startNativeCapture = function (modo, frames) {
+    var self = this, tap = modo === 'coretap';
     if (!(window.caramujo && window.caramujo.nativeStart)) {
       return Promise.reject(new Error('sem-ponte-nativa'));
     }
-    return Promise.resolve(window.caramujo.nativeAvailable()).then(function (ok) {
-      if (!ok) throw new Error('modulo-nativo-nao-instalado');
-      return window.caramujo.nativeStart();
+    if (tap && !window.caramujo.tapStart) return Promise.reject(new Error('sem-ponte-do-tap'));
+    return Promise.resolve(tap ? window.caramujo.tapAvailable() : window.caramujo.nativeAvailable()).then(function (ok) {
+      if (!ok) throw new Error(tap ? 'tap-indisponivel' : 'modulo-nativo-nao-instalado');
+      return tap ? window.caramujo.tapStart(frames || 256) : window.caramujo.nativeStart();
     }).then(function (info) {
       var rate = (info && info.sampleRate) || 48000;
+      /* o main já trocou de captura: se a anterior também era nativa, stopSource() não pode
+         mandar parar a NOVA (nativeOn ainda vale da anterior) */
+      self.nativeOn = false;
       self.stopSource();
+      self.nativeKind = tap ? 'coretap' : 'sck';
       self.sr = rate;
       self.binHz = (rate / 2) / (FFT_N / 2);
       self.setupLufs(rate);
@@ -954,7 +961,9 @@
       if (!self._nativeWired) {
         self._nativeWired = true;
         window.caramujo.onNativeAudio(function (buf, t) { self.pushNativePCM(buf, t); });
-        if (window.caramujo.onNativeError) window.caramujo.onNativeError(function () {});
+        if (window.caramujo.onNativeError) window.caramujo.onNativeError(function (msg) {
+          if (/^taxa:/.test(String(msg)) && self.onRateChange) self.onRateChange(parseFloat(String(msg).slice(5)));
+        });
       }
       return 'native';
     });

@@ -862,6 +862,10 @@
        O nosso ia de 20 Hz a 20 kHz em log puro e espremia o grave.
      - ALTURA: de -80 a -20 dB depois do tilt (4,5 dB por oitava, pivô em 1 kHz).
        1 kHz a -30 dBFS fica a 1/6 do topo; -18 e -6 encostam no topo. Sem joelho.
+     - v2.6: PADRÃO MAIS RÁPIDO (pedido do Bruno: "tudo muito devagar" ao lado do MiniMeters).
+       A suavidade padrão caiu de 0,90 pra 0,84: cai ~146 dB/s (era 86) e sobe em ~3 quadros
+       a 60 qps. 0,90 reproduz o que medimos no vídeo; o controle "Suavidade" do visual
+       continua livre (0 a 98%).
      - TEMPO: média exponencial na POTÊNCIA de cada raia, 0,9 a cada 256 amostras
        (τ = 51 ms em 48 kHz). Cai 86 dB/s em linha reta e sobe em uns 5 quadros. O
        nosso caía em 0,83 s e a varredura deixava um rabo de meia década.
@@ -955,10 +959,10 @@
 
   CV.register('spectrum', {
     name: 'Espectro', group: 'Estúdio', desc: 'Frequências em tempo real, com leitura de nota',
-    defaults: { estilo: 'ambos', smooth: 0.9, tilt: 4.5, fft: 4096, escala: 'log', canal: 'ms', cmap: 'auto' },
+    defaults: { estilo: 'ambos', smooth: 0.84, tilt: 4.5, fft: 4096, escala: 'log', canal: 'ms', cmap: 'auto' },
     schema: [
       { k: 'estilo', label: 'Estilo', type: 'seg', opts: [['fft', 'Linha'], ['barras', 'Barras'], ['ambos', 'Os dois']], def: 'ambos' },
-      { k: 'smooth', label: 'Suavidade', type: 'range', min: 0, max: 0.98, step: 0.01, def: 0.9, fmt: 'pct' },
+      { k: 'smooth', label: 'Suavidade', type: 'range', min: 0, max: 0.98, step: 0.01, def: 0.84, fmt: 'pct' },
       { k: 'tilt', label: 'Tilt', type: 'range', min: 0, max: 9, step: 0.25, def: 4.5, fmt: 'db' },
       { k: 'fft', label: 'FFT', type: 'seg', opts: [[1024, '1k'], [2048, '2k'], [4096, '4k'], [8192, '8k'], [16384, '16k']], def: 4096 },
       { k: 'escala', label: 'Escala', type: 'seg', opts: [['mel', 'Mel'], ['log', 'Log'], ['lin', 'Linear']], def: 'log' },

@@ -36,3 +36,7 @@ D1 Detalhe Alto = padrao (todos os temas). D4 subir Electron: sim. D3 modulo de 
 - Apagados: dist/ 1.0.0–2.3.0 (+blockmaps), backup-antes-otimizacao, backup-v1, backup-v2.0, test/.fuse_hidden*. Ficou dist/…2.4.0 (o 2.5.0 nasce com `npm run dist` no Mac e deve substituir o 2.4.0 então).
 - README (seção v2.5, atalhos, 184), COMANDOS (install, atalhos, voltar via git), DESIGN (Detalhe e tempo real v2.5), contexto-continuidade (bloco v25 no topo).
 - Pendente: medições no Mac (ver contexto-continuidade).
+
+## F6 — tap do Core Audio e espectro mais rápido (código pronto, 197 checagens; tap NÃO compilado)
+- Espectro smooth 0,84 (142 dB/s). native/coretap + ponte main/preload + captura Tap/Automática na tela. Versão 2.6.0.
+- Bloqueio: build do coretap sem .node no Mac (Release vazio). Falta a saída do `npm run audio-tap`.

@@ -1,3 +1,19 @@
+<v26_tap_e_espectro_rapido_novembro_2026>
+LEIA ESTE PRIMEIRO, depois v2.5. Rodada de 16 e 17/nov.
+DIAGNÓSTICO DO MAC (v2.5, Electron 45.3.3 ok): tela 120 Hz, captura nativa estéreo, bloco 20 ms, recuo 22,6, intervalo 21,6, som→olho 42 a 50 ms (análise 25 a 33 + tela 17), js 1,9 ms/quadro (espectro 1,55 ms em Alto), "faltou" subindo (123 → 680 → 794): blocos de 20 ms com tremida fazem a cabeça alcançar o bloco mais novo.
+BRUNO: mais pontos de frequência no espectro NÃO resolveu o "clunky"; quer decay mais rápido; pediu o tap do Core Audio se houver ganho ("se tiver ganho, pode seguir").
+FEITO:
+- Espectro: smooth padrão 0,90 → 0,84 (142 dB/s medido na bancada, era 86). Slider Suavidade continua; 0,90 = o MiniMeters medido. Smoke atualizado (padrão e queda).
+- native/coretap (CMakeLists + src/coretap.mm): tap global estéreo (CATapDescription, CATapUnmuted) → agregado privado → IOProc → anel sem trava → thread de drenagem → int16 estéreo via ThreadSafeFunction. API: isSupported, permission (TCC privado), start({frames}, cb), stop. cb(0, buf) = PCM; cb(1) = saída padrão mudou. Guarda __has_include: SDK antigo compila e responde "sdk-sem-tap". Tap privado por KVC (privateTap).
+- electron/main.js: cv-tap-available/why/start; reinício automático quando a saída padrão muda (aviso 'taxa:N' se a taxa mudou); stop em cv-native-stop, cv-native-start (só uma captura por vez), cv-win-close e before-quit. preload: tapAvailable/tapWhy/tapStart.
+- audio.js: startNativeCapture('coretap', frames); nativeKind 'coretap'|'sck'; religar não manda parar a captura nova; onRateChange.
+- app.js: captura 'tap' (seg), 'Bloco do tap' 128/256/512 (state.tapFrames), Automática testa o tap primeiro (medeCaptura 'tap': estéreo e atraso < 25 ms → decideCaptura('tap'), senão `classico`), migração v26 (refaz capAuto uma vez), via 'tap core audio' no diagnóstico.
+- package.json 2.6.0: scripts audio-tap, audio-tap-check; devDependencies cmake-js, node-addon-api; coretap.node no files e no asarUnpack. .gitignore: native/coretap/build/.
+- 197 checagens.
+ESTADO NO MAC: o Bruno rodou `npm run audio-tap` em 17/nov, mas native/coretap/build/Release ficou VAZIO e não existe .ninja_log (o ninja nunca rodou ou parou antes de compilar). O módulo NUNCA foi compilado nem testado. Próximo passo: ele cola a saída completa de `npm run audio-tap`; corrigir erros de compilação do coretap.mm (escrito sem poder compilar, VM é Linux). CMake achou Node 25.9.0 headers, SDK em /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk (versão desconhecida: se for < 14.2, o tap responde sdk-sem-tap).
+PENDENTE: confirmar no HUD (F, C) "captura auto → tap", bloco ~5 ms, som→olho ~27 ms; ver se "faltou" para de subir; Bruno julgar o espectro a 84% (ajustar o slider se ainda parecer lento ou nervoso). Ideia não feita: ataque mais rápido que a queda no espectro (viés pra cima em ruído; só se ele pedir).
+</v26_tap_e_espectro_rapido_novembro_2026>
+
 <v25_detalhe_latencia_novembro_2026>
 LEIA ESTE PRIMEIRO, depois v2.4. Rodada de 16/nov. Plano completo: docs/plano-v25-fluidez-detalhe-latencia.md. Log por etapa: docs/progresso-v25.md.
 PEDIDO DO BRUNO: análise completa e plano em fases pra mais fluidez/detalhe (espectro com mais frequências), menos atraso som→visual, UX. Depois: "siga com todas as fases, detalhe alto como padrão, subir o electron, módulo de captura por enquanto não precisa, apague instaladores antigos e backups, deixe só a versão mais atual". E: sempre dar o comando de git no fim e manter o README atualizado (Claude não commita).

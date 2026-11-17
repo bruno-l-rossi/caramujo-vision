@@ -14,13 +14,24 @@ npm test
 npm start
 ```
 
-O `npm install` só é preciso depois de atualizar o `package.json` (a v2.5 sobe o Electron pra 45). `npm test` roda as 184 checagens e leva poucos segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
+O `npm install` só é preciso depois de atualizar o `package.json` (a v2.5 sobe o Electron pra 45). `npm test` roda as 197 checagens e leva poucos segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
 
 Dentro do app: `S` abre os ajustes, `P` pausa, `T` troca o tema, `F` mostra fps e o atraso do som (`C` copia o diagnóstico), `D` troca o detalhe, `1` a `9` trocam o preset, `R` grava o visual sob o mouse, `H` deixa a barra de ferramentas fixa. `Esc` fecha o que estiver aberto.
 
 ## Voltar pra uma versão anterior
 
 As pastas de backup foram apagadas na v2.5: o histórico mora no git. Pra voltar, `git log --oneline` acha o commit e `git checkout <commit> -- .` traz os arquivos. Se o Electron 45 der problema no Mac, volte `electron` pra `^33.0.0` e `electron-builder` pra `^24.13.3` no `package.json` e rode `npm install`.
+
+## Tap do Core Audio (menor atraso, macOS 14.2+)
+
+```
+brew install cmake
+npm install
+npm run audio-tap
+npm run audio-tap-check
+```
+
+Se o `audio-tap` der erro, cole a saída inteira na conversa. Depois, em Ajustes › Áudio, a captura Automática já testa o tap sozinha (ou escolha **Tap**). O macOS pede a permissão de captura de áudio do sistema na primeira vez.
 
 ## Medir o custo do acabamento de filme
 

@@ -159,6 +159,13 @@ Em **Ajustes › Janela** dá pra limitar os quadros por segundo: **Da tela** ac
 
 Aperte `F` pra ver os quadros por segundo e quanto tempo o som leva pra chegar na tela.
 
+## v2.6: tap do Core Audio e espectro mais rápido
+
+- **Espectro mais rápido.** A suavidade padrão caiu de 90% pra 84%: as frequências caem ~146 dB/s (eram 86) e sobem em uns 3 quadros. Parece menos "arrastado". O controle **Suavidade** do visual continua livre; 90% reproduz o que medimos no MiniMeters.
+- **Tap do Core Audio (menor atraso).** Captura o som do sistema em blocos de 128 a 512 amostras (2,7 a 10,7 ms), contra os 20 ms fixos da captura nativa. Estimativa: uns 15 ms a menos de "som → olho". Precisa de macOS 14.2 ou mais novo, do módulo compilado (`npm run audio-tap`) e da permissão de **captura de áudio do sistema**. Em Ajustes › Áudio: Captura **Tap** e **Bloco do tap** (128, 256 ou 512).
+- A captura **Automática** agora testa o tap primeiro; se ele não existir ou não chegar em estéreo com atraso baixo, segue o teste de antes (nativa, depois "Do sistema").
+- Se você troca a saída de som (fone, AirPods), o tap reinicia sozinho.
+
 ## v2.5: detalhe, tempo real e diagnóstico
 
 - **Detalhe Alto (padrão).** O espectro calcula a FFT com zero-padding (janela de 4096 amostras, FFT até 4× maior): muito mais pontos de frequência, então os picos deslizam em vez de pular de raia em raia, principalmente nos graves. A leitura em dB e o eixo continuam os mesmos medidos no MiniMeters. Em Ajustes › Visuais (ou tecla `D`) dá pra voltar pro Padrão.
@@ -253,13 +260,24 @@ npm run audio-nativo-check
 
 Em **Ajustes › Áudio** o estado mostra **Estéreo nativo** quando ele está ativo.
 
+### Tap do Core Audio (opcional, macOS 14.2+)
+
+```
+brew install cmake
+npm install
+npm run audio-tap
+npm run audio-tap-check
+```
+
+O build usa o Xcode Command Line Tools com SDK do macOS 14.2 ou mais novo (`xcode-select --install`, ou atualize as ferramentas). Sem o módulo compilado o app segue normal, na captura nativa.
+
 ### Testes
 
 ```
 npm test
 ```
 
-Roda 184 checagens em poucos segundos: motor de áudio, a cabeça de leitura com a captura em blocos, a reação ao grave (um beat sintético em dois volumes), o espectro e os medidores contra as medidas do MiniMeters, os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
+Roda 197 checagens em poucos segundos: motor de áudio, a cabeça de leitura com a captura em blocos, a reação ao grave (um beat sintético em dois volumes), o espectro e os medidores contra as medidas do MiniMeters, os 17 visuais em todos os temas e tamanhos, layout, presets, migração da v1, o processo da janela e as guardas de decisão. Se der `SMOKE PASSOU`, nada quebrou.
 
 ## Estrutura
 

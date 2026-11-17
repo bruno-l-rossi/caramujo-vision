@@ -470,8 +470,8 @@ console.log('espectro no molde do MiniMeters:');
     return out;
   };
   const tom = (f, a) => (n) => a * Math.sin(2 * Math.PI * f * n / sr);
-  check('padrão igual ao dele: Os dois, 90%, 4,5 dB, FFT 4096, Log, Mid e Side',
-    def.defaults.estilo === 'ambos' && def.defaults.smooth === 0.9 && def.defaults.tilt === 4.5 && def.defaults.fft === 4096 && def.defaults.escala === 'log' && def.defaults.canal === 'ms');
+  check('padrão: Os dois, 84% (queda mais rápida que a do MiniMeters medido), 4,5 dB, FFT 4096, Log, Mid e Side',
+    def.defaults.estilo === 'ambos' && def.defaults.smooth === 0.84 && def.defaults.tilt === 4.5 && def.defaults.fft === 4096 && def.defaults.escala === 'log' && def.defaults.canal === 'ms');
 
   const o = novo(); o.n = 0;
   passa(o, 0.2);
@@ -489,7 +489,7 @@ console.log('espectro no molde do MiniMeters:');
   const bqTom = o.m.st.bq[Math.floor(o.m.st.ax.xb[kb] * 2)];
   const cai = passa(o, 0.5);
   const queda = (cai[6][kb] - cai[18][kb]) / (12 / 60);
-  check('cai como o dele: 86 dB/s em linha reta (τ de 51 ms na potência)', queda > 70 && queda < 102, queda.toFixed(0) + ' dB/s');
+  check('cai mais rápido que o dele (v2.6): ~146 dB/s em linha reta (0,84 a cada 256 amostras, na potência)', queda > 125 && queda < 170, queda.toFixed(0) + ' dB/s');
   const bqDepois = o.m.st.bq[Math.floor(o.m.st.ax.xb[kb] * 2)];
   passa(o, 0); // nada
   check('barra acende com o som de agora e apaga antes da linha (o rabo é só da linha)', bqTom >= 0 && bqDepois === -1 && cai[cai.length - 1][kb] > -200,
@@ -930,6 +930,11 @@ try {
   check('desencaixar devolve a janela de antes', win.b.width === 1440 && win.b.height === 900 && win.b.x === 100);
   handlers['cv-win-pin']({}, true);
   check('sempre na frente liga', win.top === true);
+  // v2.6: o tap sem módulo compilado (aqui é Linux) nunca derruba o app: responde "indisponível"
+  check('tap: sem o módulo compilado, available = false e why explica', (await handlers['cv-tap-available']()) === false && (await handlers['cv-tap-why']()).ok === false);
+  let tapErro = ''; try { await handlers['cv-tap-start']({}, 256); } catch (e) { tapErro = e.message; }
+  check('tap: start sem módulo falha com motivo claro (o app cai na nativa)', tapErro === 'sem-modulo-tap', tapErro);
+  check('tap: parar (nativo e janela) não quebra sem módulo', (await handlers['cv-native-stop']()) === true);
 } catch (e) { check('processo principal carrega e responde', false, e.stack.split('\n').slice(0, 3).join(' | ')); }
 
 /* ================= v2.5 · detalhe alto ================= */
@@ -980,6 +985,42 @@ try {
   check('atalhos 1–9, R e botão Reconectar existem', /\/\^\[1-9\]\$\//.test(src) && /k === 'r'/.test(src) && /emptyretry/.test(src) && /emptyretry/.test(fs.readFileSync(path.join(BASE, 'index.html'), 'utf8')));
   check('janela oculta não desenha (document.hidden)', /document\.hidden/.test(src));
 } catch (e) { check('detalhe alto carrega e responde', false, e.stack.split('\n').slice(0, 3).join(' | ')); }
+
+/* ================= v2.6 · tap do Core Audio ================= */
+console.log('tap do Core Audio (v2.6):');
+try {
+  const srcTap = fs.readFileSync(path.join(BASE, 'native/coretap/src/coretap.mm'), 'utf8');
+  check('módulo nativo do tap existe e exporta isSupported, permission, start, stop', ['isSupported', 'permission', 'start', 'stop'].every((n) => new RegExp('exports\\.Set\\("' + n + '"').test(srcTap)));
+  check('módulo do tap pede bloco pequeno (kAudioDevicePropertyBufferFrameSize) e tap sem mutar', /kAudioDevicePropertyBufferFrameSize/.test(srcTap) && /CATapUnmuted/.test(srcTap));
+  const pk = JSON.parse(fs.readFileSync(path.join(BASE, 'package.json'), 'utf8'));
+  check('package.json tem o build do tap e empacota o .node fora do asar', !!pk.scripts['audio-tap'] && pk.build.files.some((f) => /coretap\.node/.test(f)) && pk.build.asarUnpack.some((f) => /coretap\.node/.test(f)));
+  const stT = A.normalize(Object.assign(A.freshState(), { v26: 0, capAuto: 'nativa', captura: 'auto' }));
+  check('estado da v2.5 refaz a decisão da Automática uma vez (agora com o tap)', stT.capAuto === undefined && stT.v26 === 1);
+  const stT2 = A.normalize(Object.assign(A.freshState(), { captura: 'tap', capAuto: 'tap', tapFrames: 77 }));
+  check('captura "tap" é válida e o bloco do tap só aceita 128, 256 ou 512', stT2.captura === 'tap' && stT2.capAuto === 'tap' && stT2.tapFrames === 256);
+  // engine: startNativeCapture('coretap') usa a ponte do tap e marca a via
+  const calls = [];
+  let errCb = null;
+  g.caramujo = {
+    nativeStart: () => Promise.reject(new Error('x')), nativeAvailable: () => Promise.resolve(true), nativeStop: () => { calls.push('stop'); return Promise.resolve(true); },
+    tapAvailable: () => Promise.resolve(true), tapStart: (f) => { calls.push('tap' + f); return Promise.resolve({ sampleRate: 48000, channels: 2, frames: f, name: 'Saída' }); },
+    onNativeAudio() {}, onNativeError(cb) { errCb = cb; }
+  };
+  const ET = new g.AudioEngine();
+  await ET.startNativeCapture('coretap', 128);
+  check('engine: tap liga pela ponte do tap com o bloco pedido e marca nativeKind', calls[0] === 'tap128' && ET.nativeKind === 'coretap' && ET.nativeOn === true);
+  await ET.startNativeCapture('coretap', 256);
+  check('engine: religar o tap não manda parar a captura nova', !calls.includes('stop') && ET.nativeOn === true, calls.join(','));
+  let novaTaxa = 0; ET.onRateChange = (r) => { novaTaxa = r; };
+  errCb && errCb('taxa:44100');
+  check('engine: aviso de troca de taxa (fone) chega no app', novaTaxa === 44100);
+  let semPonte = ''; delete g.caramujo.tapStart;
+  try { await new g.AudioEngine().startNativeCapture('coretap', 256); } catch (e) { semPonte = e.message; }
+  check('engine: sem ponte do tap rejeita (o app cai na nativa)', semPonte === 'sem-ponte-do-tap', semPonte);
+  delete g.caramujo;
+  const srcAppT = fs.readFileSync(path.join(BASE, 'js/app.js'), 'utf8');
+  check('Automática testa o tap primeiro e cai no teste clássico', /tapAvailable/.test(srcAppT) && /classico/.test(srcAppT) && /decideCaptura\('tap'\)/.test(srcAppT));
+} catch (e) { check('tap do Core Audio', false, e.stack.split('\n').slice(0, 3).join(' | ')); }
 
 console.log('\n' + okN + ' checagens ok');
 console.log(fail === 0 ? 'SMOKE PASSOU' : 'SMOKE FALHOU: ' + fail);
