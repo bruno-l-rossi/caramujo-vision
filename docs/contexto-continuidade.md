@@ -10,8 +10,8 @@ FEITO:
 - app.js: captura 'tap' (seg), 'Bloco do tap' 128/256/512 (state.tapFrames), Automática testa o tap primeiro (medeCaptura 'tap': estéreo e atraso < 25 ms → decideCaptura('tap'), senão `classico`), migração v26 (refaz capAuto uma vez), via 'tap core audio' no diagnóstico.
 - package.json 2.6.0: scripts audio-tap, audio-tap-check; devDependencies cmake-js, node-addon-api; coretap.node no files e no asarUnpack. .gitignore: native/coretap/build/.
 - 197 checagens.
-ESTADO NO MAC: o Bruno rodou `npm run audio-tap` em 17/nov, mas native/coretap/build/Release ficou VAZIO e não existe .ninja_log (o ninja nunca rodou ou parou antes de compilar). O módulo NUNCA foi compilado nem testado. Próximo passo: ele cola a saída completa de `npm run audio-tap`; corrigir erros de compilação do coretap.mm (escrito sem poder compilar, VM é Linux). CMake achou Node 25.9.0 headers, SDK em /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk (versão desconhecida: se for < 14.2, o tap responde sdk-sem-tap).
-PENDENTE: confirmar no HUD (F, C) "captura auto → tap", bloco ~5 ms, som→olho ~27 ms; ver se "faltou" para de subir; Bruno julgar o espectro a 84% (ajustar o slider se ainda parecer lento ou nervoso). Ideia não feita: ataque mais rápido que a queda no espectro (viés pra cima em ruído; só se ele pedir).
+ESTADO NO MAC (17/nov, CONFIRMADO): `npm run audio-tap` compilou de primeira, `audio-tap-check` deu "suportado true, permissão authorized". HUD v2.6: captura auto → tap (via tap core audio), estéreo, bloco 5,3 ms, recuo 6,6 ms, intervalo 5,4 ms, faltou 4 (era 794), som→olho 26 ms (era 42 a 50; análise 9,3 + tela 17), js 2,05 ms/quadro (espectro 1,69). A tela (2 quadros a 120 Hz = 17 ms, PRESENT_FRAMES = 2, chute nunca medido) agora é 65% do atraso.
+PENDENTE: Bruno julgar o espectro a 84% (ajustar o slider se ainda parecer lento ou nervoso). Ideia não feita: ataque mais rápido que a queda no espectro (viés pra cima em ruído; só se ele pedir).
 </v26_tap_e_espectro_rapido_novembro_2026>
 
 <v25_detalhe_latencia_novembro_2026>

@@ -37,6 +37,6 @@ D1 Detalhe Alto = padrao (todos os temas). D4 subir Electron: sim. D3 modulo de 
 - README (seção v2.5, atalhos, 184), COMANDOS (install, atalhos, voltar via git), DESIGN (Detalhe e tempo real v2.5), contexto-continuidade (bloco v25 no topo).
 - Pendente: medições no Mac (ver contexto-continuidade).
 
-## F6 — tap do Core Audio e espectro mais rápido (código pronto, 197 checagens; tap NÃO compilado)
+## F6 — tap do Core Audio e espectro mais rápido (feito e validado no Mac, 197 checagens)
 - Espectro smooth 0,84 (142 dB/s). native/coretap + ponte main/preload + captura Tap/Automática na tela. Versão 2.6.0.
-- Bloqueio: build do coretap sem .node no Mac (Release vazio). Falta a saída do `npm run audio-tap`.
+- Tap compilado e validado no Mac em 17/nov: som→olho 26 ms (era 42-50), faltou 4. Falta só o Bruno julgar o espectro a 84%.
