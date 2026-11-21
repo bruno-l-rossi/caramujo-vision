@@ -2350,12 +2350,18 @@
       var cada = 0.05 / Math.max(0.3, s.speed);
       if (m.st.acc >= cada) {
         m.st.acc = m.st.acc > cada * 3 ? 0 : m.st.acc - cada;
-        var td = d.time, P = CV.det(m, 96, 288), snap;
+        var td = d.time, P = CV.det(m, 96, CV.detalhe === 'alto' ? 480 : 288), snap;
         var velho = m.st.hist.length >= K ? m.st.hist[0] : null;
         snap = velho && velho.length === P ? velho : new Float32Array(P);
-        var stp = Math.floor(td.length / P);
+        var stp = Math.max(1, Math.floor(td.length / P));
         var gk = CV.ganhoOnda(d, 0.95, 8) * CV.respira(m, 0.6 * gS + 0.6 * sm.soco, 0.5);
-        for (var i = 0; i < P; i++) snap[i] = td[i * stp] * gk;
+        /* v2.6: cada ponto é o MAIOR pico (com sinal) do pedaço de amostras que ele cobre.
+           Antes pegava 1 amostra a cada ~7 sem filtro e serrilhava o agudo. */
+        for (var i = 0; i < P; i++) {
+          var j0 = i * stp, j1 = j0 + stp > td.length ? td.length : j0 + stp, pico = td[j0], ap = pico < 0 ? -pico : pico;
+          for (var q = j0 + 1; q < j1; q++) { var v = td[q], av = v < 0 ? -v : v; if (av > ap) { ap = av; pico = v; } }
+          snap[i] = pico * gk;
+        }
         if (snap === velho) m.st.hist.shift();
         m.st.hist.push(snap);
         while (m.st.hist.length > K) m.st.hist.shift();

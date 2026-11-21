@@ -984,6 +984,14 @@ try {
   check('Camadas: o ritmo da pilha não depende da taxa de quadros (30 Hz ≈ 120 Hz)', h30 > 0 && Math.abs(h30 - h120) <= 1, h30 + ' vs ' + h120);
   check('atalhos 1–9, R e botão Reconectar existem', /\/\^\[1-9\]\$\//.test(src) && /k === 'r'/.test(src) && /emptyretry/.test(src) && /emptyretry/.test(fs.readFileSync(path.join(BASE, 'index.html'), 'utf8')));
   check('janela oculta não desenha (document.hidden)', /document\.hidden/.test(src));
+  // v2.6: Camadas guarda o pico de cada pedaço (sem serrilha) e usa até 480 pontos no Alto
+  const srcMod = fs.readFileSync(path.join(BASE, 'js/modules.js'), 'utf8');
+  check('Camadas: cada ponto é o maior pico do pedaço e o teto sobe pra 480 no Alto', /CV\.detalhe === 'alto' \? 480 : 288/.test(srcMod) && /maior pico|MAIOR pico/.test(srcMod));
+  { const E6 = mk(7000); E6.adv = 1600; E6.pos = E6.wr; for (let i = 0; i < E6.time.length; i++) E6.time[i] = 0.5 * Math.sin(2 * Math.PI * 7000 * i / 48000); mW.st.hist = []; mW.st.acc = 1; mW.w = 1200; mW.h = 400;
+    wl.draw(mW, E6, 1 / 60, 0); const sn = mW.st.hist[0] || [];
+    let mx = 0; for (let i = 0; i < sn.length; i++) mx = Math.max(mx, Math.abs(sn[i]));
+    check('Camadas: tom agudo de 7 kHz não some na decimação (pico preservado)', sn.length > 96 && sn.length <= 480 && mx > 0.2, sn.length + ' pontos · pico ' + mx.toFixed(2));
+    mW.w = 300; mW.h = 100; }
 } catch (e) { check('detalhe alto carrega e responde', false, e.stack.split('\n').slice(0, 3).join(' | ')); }
 
 /* ================= v2.6 · tap do Core Audio ================= */

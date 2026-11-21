@@ -14,7 +14,7 @@ npm test
 npm start
 ```
 
-O `npm install` só é preciso depois de atualizar o `package.json` (a v2.5 sobe o Electron pra 45). `npm test` roda as 197 checagens e leva poucos segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
+O `npm install` só é preciso depois de atualizar o `package.json` (a v2.5 sobe o Electron pra 45). `npm test` roda as 199 checagens e leva poucos segundos. Se der `SMOKE PASSOU`, nada quebrou. `npm start` abre o app.
 
 Dentro do app: `S` abre os ajustes, `P` pausa, `T` troca o tema, `F` mostra fps e o atraso do som (`C` copia o diagnóstico), `D` troca o detalhe, `1` a `9` trocam o preset, `R` grava o visual sob o mouse, `H` deixa a barra de ferramentas fixa. `Esc` fecha o que estiver aberto.
 

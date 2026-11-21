@@ -40,3 +40,7 @@ D1 Detalhe Alto = padrao (todos os temas). D4 subir Electron: sim. D3 modulo de 
 ## F6 — tap do Core Audio e espectro mais rápido (feito e validado no Mac, 197 checagens)
 - Espectro smooth 0,84 (142 dB/s). native/coretap + ponte main/preload + captura Tap/Automática na tela. Versão 2.6.0.
 - Tap compilado e validado no Mac em 17/nov: som→olho 26 ms (era 42-50), faltou 4. Falta só o Bruno julgar o espectro a 84%.
+
+## F7 (21/nov) Camadas e roteiro de medição
+- Camadas: decimação por maior pico, até 480 pontos no Alto. docs/medir-atraso-camera-lenta.md pronto. 199 checagens.
+- Fora: E5, E7 dos outros visuais, lab/, dist 2.6.0.

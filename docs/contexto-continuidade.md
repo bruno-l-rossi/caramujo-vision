@@ -11,6 +11,7 @@ FEITO:
 - package.json 2.6.0: scripts audio-tap, audio-tap-check; devDependencies cmake-js, node-addon-api; coretap.node no files e no asarUnpack. .gitignore: native/coretap/build/.
 - 197 checagens.
 ESTADO NO MAC (17/nov, CONFIRMADO): `npm run audio-tap` compilou de primeira, `audio-tap-check` deu "suportado true, permissão authorized". HUD v2.6: captura auto → tap (via tap core audio), estéreo, bloco 5,3 ms, recuo 6,6 ms, intervalo 5,4 ms, faltou 4 (era 794), som→olho 26 ms (era 42 a 50; análise 9,3 + tela 17), js 2,05 ms/quadro (espectro 1,69). A tela (2 quadros a 120 Hz = 17 ms, PRESENT_FRAMES = 2, chute nunca medido) agora é 65% do atraso.
+FEITO EM 21/nov (a pedido: "siga suas recomendações"): Camadas pega o MAIOR PICO de cada pedaço de amostras (não 1 a cada ~7 sem filtro) e usa até 480 pontos no Alto (288 no Padrão); roteiro da câmera lenta em docs/medir-atraso-camera-lenta.md pra medir o PRESENT_FRAMES (único chute que sobrou; 17 dos 26 ms). 199 checagens. AINDA NÃO FEITO: E5 estéreo (pulado de propósito), E7 dos outros visuais (lissa, flow, psy, malha), shader 2x, cordas lendo spectrum(4096), lab/ (bancada), leituras de Nativa+Imediata e Do sistema, npm run dist 2.6.0.
 PENDENTE: Bruno julgar o espectro a 84% (ajustar o slider se ainda parecer lento ou nervoso). Ideia não feita: ataque mais rápido que a queda no espectro (viés pra cima em ruído; só se ele pedir).
 </v26_tap_e_espectro_rapido_novembro_2026>
 
